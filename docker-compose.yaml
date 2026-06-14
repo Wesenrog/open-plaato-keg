@@ -26,7 +26,7 @@ services:
     volumes:
       # Persist keg data across container updates.
       # Unraid: change host path to /mnt/user/appdata/open-plaato-keg:/db
-      - ./data:/db
+      - /var/snap/docker/common/var-lib-docker/volumes/open-plaato-keg:/db
     environment:
       - DATABASE_FILE_PATH=/db/keg_data.bin
       - KEG_LISTENER_PORT=1234
