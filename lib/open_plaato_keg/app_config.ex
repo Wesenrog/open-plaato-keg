@@ -9,7 +9,7 @@ defmodule OpenPlaatoKeg.AppConfig do
     watchtower_token: "",
     theme: %{},
     home_page: "taplist",
-    time_format: "12h"
+    time_format: "24h"
   }
 
   @doc "Load persisted config from disk into Application env. Call once at startup."
