@@ -17,7 +17,7 @@ services:
       - 8080:8080
 
   open_plaato_keg:
-    image: ghcr.io/darkjaeger/open-plaato-keg:latest
+    image: ghcr.io/wesenrog/open-plaato-keg:latest
     container_name: open_plaato_keg
     ports:
       - 1234:1234
