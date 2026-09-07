@@ -29,7 +29,7 @@
     <div class="kegging">
       <div class="card">
         <div class="device-row">
-          <select id="device"><option value="">Select a connected keg…</option></select>
+          <select id="device"><option value="">Select a keg…</option></select>
           <button id="refreshDevices" title="Reload list">↻</button>
         </div>
       </div>
@@ -105,7 +105,7 @@
         </details>
       </div>
 
-      <p class="empty" id="noneMsg">Connect a keg scale to begin.</p>
+      <p class="empty" id="noneMsg">No kegs registered yet. Connect a scale to the TCP port.</p>
     </div>
   </main>
 
@@ -116,28 +116,58 @@
     const noneMsg = qs("#noneMsg");
     let currentId = "";
     let latest = {};
+    let connectedSet = new Set();
 
     function post(path, body) {
       return api("/api/kegs/" + encodeURIComponent(currentId) + path, "POST", body || {});
     }
 
+    function optionLabel(keg, id) {
+      const name = (keg && keg.my_label && keg.my_label.trim()) || "Keg " + id.slice(0, 8);
+      return connectedSet.has(id) ? name : name + " — offline";
+    }
+
     async function loadDevices() {
-      let ids = [];
+      let kegs = [];
+      let connected = [];
       try {
-        ids = (await api("/api/kegs/connected")) || [];
+        [kegs, connected] = await Promise.all([
+          api("/api/kegs"),
+          api("/api/kegs/connected"),
+        ]);
       } catch (e) {
         toast(e.message, true);
       }
-      const prev = deviceSel.value;
-      deviceSel.innerHTML = '<option value="">Select a connected keg…</option>';
-      ids.forEach((id) => {
-        const o = ce("option");
-        o.value = id;
-        o.textContent = "Keg " + id.slice(0, 8);
-        deviceSel.appendChild(o);
+      kegs = kegs || [];
+      connectedSet = new Set(connected || []);
+
+      // include any connected id that has no stored record yet
+      const byId = new Map(kegs.map((k) => [k.id, k]));
+      connectedSet.forEach((id) => {
+        if (!byId.has(id)) byId.set(id, { id });
       });
-      if (ids.indexOf(prev) !== -1) deviceSel.value = prev;
-      noneMsg.hidden = ids.length > 0;
+
+      const prev = deviceSel.value;
+      deviceSel.innerHTML = '<option value="">Select a keg…</option>';
+      [...byId.values()]
+        .sort((a, b) => {
+          const ac = connectedSet.has(a.id) ? 0 : 1;
+          const bc = connectedSet.has(b.id) ? 0 : 1;
+          return ac - bc || String(a.id).localeCompare(String(b.id));
+        })
+        .forEach((keg) => {
+          const o = ce("option");
+          o.value = keg.id;
+          o.textContent = optionLabel(keg, keg.id);
+          deviceSel.appendChild(o);
+        });
+
+      noneMsg.hidden = byId.size > 0;
+      if ([...byId.keys()].indexOf(prev) !== -1) {
+        deviceSel.value = prev;
+      } else if (currentId && byId.has(currentId)) {
+        deviceSel.value = currentId;
+      }
       if (!deviceSel.value) selectDevice("");
     }
 
@@ -160,7 +190,11 @@
       const raw = num(keg.weight_raw);
       const litres = litresLeft(keg);
       qs("#weight").textContent = raw != null ? raw.toFixed(2) : litres.toFixed(2);
-      qs("#wstatus").textContent = keg.is_pouring && keg.is_pouring !== "0" ? "settling…" : "live";
+      qs("#wstatus").textContent = !connectedSet.has(keg.id)
+        ? "offline — showing last stored data; commands won't reach the scale"
+        : keg.is_pouring && keg.is_pouring !== "0"
+        ? "settling…"
+        : "live";
 
       const empty = num(keg.empty_keg_weight);
       qs("#emptyVal").textContent = empty != null ? "Stored empty weight: " + empty.toFixed(2) + " kg" : "";
@@ -254,6 +288,7 @@
 
     connectWs((msg) => {
       if (msg.type) return;
+      if (msg.id) connectedSet.add(msg.id);
       applyData(msg);
     });
 
