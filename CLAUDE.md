@@ -4,35 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Open Plaato Keg is an Elixir application that reverse-engineers the Blynk protocol used by Plaato Keg homebrew devices, allowing local operation without the discontinued Plaato cloud service. It acts as a local Blynk server replacement, decoding TCP data from keg hardware and exposing it via HTTP REST API, WebSocket, MQTT, and BarHelper integrations.
+Open Plaato Keg is an Elixir application that reverse-engineers the Blynk protocol used by
+Plaato Keg homebrew scales, allowing local operation without the discontinued Plaato cloud
+service. It acts as a local Blynk server replacement, decoding TCP data from keg hardware and
+exposing it via an HTTP REST API and a WebSocket.
+
+This is a **keg-weight-only** build. There is no airlock/fermentation support, no CO₂ keg mode,
+no tap-list/beverage database, and no MQTT/BarHelper/Brewfather/Grainfather/Prometheus/OTA
+integrations. The web UI is three pages: Serving, Kegging, and Keg Devices.
 
 ## Build & Development Commands
 
 ```bash
-# Install dependencies
-mix deps.get
-
-# Run the application locally
-mix run --no-halt
-
-# Run all tests (alias runs with --no-start)
-mix test
-
-# Run a single test file
-mix test test/decoder_test.exs
-
-# Run a specific test by line number
-mix test test/decoder_test.exs:42
-
-# Lint with Credo
-mix credo
-
-# Build a Docker image
-docker build -t open-plaato-keg .
-
-# Build an Elixir release
-mix release
+mix deps.get                       # install dependencies
+mix run --no-halt                  # run the application locally
+mix test                           # run all tests (alias runs with --no-start)
+mix test test/decoder_test.exs     # run a single test file
+mix test test/decoder_test.exs:42  # run a specific test by line number
+mix credo --strict                 # lint
+docker build -t open-plaato-keg .  # build a Docker image
+mix release                        # build an Elixir release
 ```
+
+`local/keg_simulator.exs` replays the captured Blynk frames in `local/bin/` against a running
+server (`mix run --no-start local/keg_simulator.exs`).
 
 ## Required Toolchain
 
@@ -44,52 +39,73 @@ Defined in `.tool-versions` (for asdf): Elixir 1.16.2-otp-26, Erlang 26.2.5.
 
 Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipeline:
 
-1. **BlynkProtocol** (`blynk_protocol.ex`) — Decodes/encodes the binary Blynk wire protocol (command type, message ID, length, body). Also provides `encode_command/3` for sending commands back to the keg.
-2. **PlaatoProtocol** (`plaato_protocol.ex`) — Interprets Blynk commands into Plaato-specific operations (login with auth token, hardware pin writes, internal metadata).
-3. **PlaatoData** (`plaato_data.ex`) — Maps Plaato virtual pin numbers to meaningful keg properties (amount_left, temperature, firmware_version, etc.).
+1. **BlynkProtocol** (`blynk_protocol.ex`) — Decodes/encodes the binary Blynk wire protocol
+   (command type, message ID, length, body). Also provides `encode_command/3` for sending
+   commands back to the keg.
+2. **PlaatoProtocol** (`plaato_protocol.ex`) — Interprets Blynk commands into Plaato-specific
+   operations (login with auth token, hardware pin writes, internal metadata).
+3. **PlaatoData** (`plaato_data.ex`) — Maps Plaato virtual pin numbers to keg properties
+   (amount_left, keg_temperature, firmware_version, etc.). Airlock pins and the beer-info /
+   CO₂-mode pins are intentionally not mapped.
 
 ### Connection Handling
 
-- **KegConnectionHandler** — ThousandIsland TCP handler; one per keg connection. Spawns a per-connection `KegDataProcessor` GenServer (not globally named, to support multiple kegs). Registers sockets in `KegSocketRegistry` for bi-directional communication.
-- **KegDataProcessor** — Per-connection GenServer that decodes incoming data and fans out to all publishers (KegData store, WebSocket, Metrics, MQTT, BarHelper) based on configuration.
-- **KegCommander** (`keg_commander.ex`) — Sends commands back to connected kegs via `KegSocketRegistry` (tare, calibrate, set OG/FG, etc.).
+- **KegConnectionHandler** — ThousandIsland TCP handler; one per keg connection. Spawns a
+  per-connection `KegDataProcessor` GenServer (not globally named, to support multiple kegs).
+  Registers sockets in `KegSocketRegistry` for bi-directional communication.
+- **KegDataProcessor** — Per-connection GenServer that decodes incoming data, classifies the
+  connection as a keg, and fans out to the `KegData` store and the `WebSocketHandler`.
+- **KegCommander** (`keg_commander.ex`) — Sends commands back to connected kegs via
+  `KegSocketRegistry`: tare, known-weight calibration, empty-keg weight, max keg volume,
+  sensitivity, temperature offset, and pin sync.
 
 ### Storage
 
-- Uses Erlang `:dets` for persistence. Two tables are opened at startup:
-  - `:keg_data` — keg scale state, stored at `DATABASE_FILE_PATH`.
-  - `:airlock_data` — airlock/fermentation device state, stored as `airlock_data.bin` in the same directory.
-- **KegData** model (`models/keg_data.ex`) — Reads/writes keg state to `:keg_data` DETS; merges incoming property updates.
-- **AirlockData** model (`models/airlock_data.ex`) — Reads/writes airlock state (temperature, bubbles_per_min, label, Grainfather settings) to `:airlock_data` DETS. Airlocks are identified by a caller-chosen string ID (not a Blynk token).
+- Uses Erlang `:dets` for persistence. One table, `:keg_data`, is opened at startup at
+  `DATABASE_FILE_PATH`.
+- **KegData** model (`models/keg_data.ex`) — Reads/writes keg state to `:keg_data`; merges
+  incoming property updates; derives `beer_left_unit` (`"litre"` or `"kg"`).
 
 ### HTTP Layer
 
 - **HttpRouter** (`http_router.ex`) — Plug/Bandit router serving:
-  - REST API for kegs: `/api/kegs`, `/api/kegs/devices`, `/api/kegs/connected`, `/api/kegs/:id`, and command endpoints `/api/kegs/:id/*` (tare, calibrate, beer-style, og, fg, abv, unit, keg-mode, sensitivity, etc.).
-  - REST API for airlocks: `/api/airlocks`, `/api/airlocks/:id`, `/api/airlocks/:id/data` (POST temperature/bubbles_per_min), `/api/airlocks/:id/label`, `/api/airlocks/:id/grainfather`.
-  - `/api/metrics` (Prometheus), `/api/alive`, `/ws` (WebSocket upgrade), static files.
-- **WebSocketHandler** — Broadcasts updates to browser clients via `WebSocketConnectionRegistry`. Keg updates send raw keg JSON; airlock updates send `%{type: "airlock", data: ...}`.
+  - Reads: `/api/kegs`, `/api/kegs/devices`, `/api/kegs/connected`, `/api/kegs/:id`, `/api/alive`.
+  - Commands `/api/kegs/:id/*`: `tare`, `tare-release`, `empty-keg`, `empty-keg-release`,
+    `empty-keg-weight`, `max-keg-volume`, `calibrate-known-weight`, `temperature-offset`,
+    `sensitivity`, `label`, `display-mode`, `reset-last-pour`, `delete`; plus `/api/kegs/order`.
+  - `/ws` (WebSocket upgrade) and static files from `priv/static`.
+- **WebSocketHandler** — Broadcasts to browser clients via `WebSocketConnectionRegistry`. Keg
+  updates send the raw keg JSON; deletions send `%{type: "keg_removed", id: ...}`.
 
-### Airlock & Grainfather Integration
+### Web UI (`priv/static`)
 
-- **AirlockData** devices are external (not Blynk hardware); clients POST data directly to `/api/airlocks/:id/data`.
-- **Grainfather** (`grainfather.ex`) — On each airlock data submission, optionally forwards temperature, bubbles-per-minute, and specific gravity to the Grainfather community API. Throttled to at most once per 15 minutes per airlock (persisted via `grainfather_last_sent_at` in DETS). Per-airlock Grainfather settings (`grainfather_enabled`, `grainfather_unit`, `grainfather_specific_gravity`) are configured via `/api/airlocks/:id/grainfather`.
+- `index.html` — **Serving** page: up to three kegs, landscape-tablet layout.
+- `kegging.html` — **Kegging** page: one selected keg, guided empty→fill flow + calibration panel.
+- `devices.html` — **Keg Devices** page: one-time per-scale setup (name, calibrate, defaults, remove).
+- `app.css` / `app.js` — shared styles and helpers (top bar, `api()`, `connectWs()`, toasts).
 
 ### Supervision Tree
 
-`OpenPlaatoKeg.Supervisor` starts (conditionally): MQTT client (Tortoise), BarHelper GenServer, WebSocket connection registry, Keg socket registry, TCP listener (ThousandIsland), HTTP server (Bandit).
+`OpenPlaatoKeg.Supervisor` (strategy `:one_for_one`) starts: WebSocket connection registry,
+keg socket registry, TCP listener (ThousandIsland), HTTP server (Bandit → `HttpRouter`).
 
 ### Configuration
 
-All runtime config is in `config/runtime.exs` via environment variables. The `ConfigTools` module (`config_tools.ex`) provides typed env var parsing (`:boolean`, `:integer`, `:string`, `:key_value_csv`). See README for the full environment variable reference.
+All runtime config is in `config/runtime.exs` via environment variables: `KEG_LISTENER_PORT`,
+`HTTP_LISTENER_PORT`, `DATABASE_FILE_PATH`, `INCLUDE_UNKNOWN_DATA`. The `OpenPlaatoKeg.Config`
+module (`config_tools.ex`) provides typed env var parsing.
 
 ## Testing
 
-Tests use `--no-start` (the application is not started during tests). Journey tests in `test/journeys/` cover end-to-end scenarios. The `assert_value` library is available for snapshot-style assertions.
+Tests use `--no-start` (the application is not started during tests). `test/decoder_test.exs`
+holds a full snapshot of decoding every frame in `local/bin/` through the pipeline — regenerate
+it deliberately after decoder changes. Journey tests in `test/journeys/` cover pin-level decode
+cases. The `assert_value` library is available for snapshot-style assertions.
 
 ## Key Conventions
 
 - Keg IDs are 32-character hex strings (the Blynk auth token).
 - Keg properties flow as keyword lists through the decode pipeline.
-- User-defined fields (beer style, OG, FG, ABV, keg date) are prefixed with `my_` and stored only in the local DETS database.
+- Locally-stored, user-defined fields are prefixed with `my_` (`my_label`, `my_sort_order`,
+  `my_display_mode`) and never sent to hardware.
 - The app version is read from `.release/version` at compile time.

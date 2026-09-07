@@ -1,489 +1,231 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kegs</title>
-    <style>
-      @import url("style.css");
-    </style>
-    <link rel="stylesheet" href="/theme.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Serving</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .serving-grid {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    @media (min-width: 900px) and (orientation: landscape) {
+      .serving-grid.count-2 { grid-template-columns: repeat(2, 1fr); }
+      .serving-grid.count-3 { grid-template-columns: repeat(3, 1fr); }
+    }
+    .keg {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      min-height: 260px;
+    }
+    .keg-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+    .keg-name {
+      font-size: 1.15rem;
+      font-weight: 700;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 0;
+      width: 100%;
+    }
+    .keg-name::placeholder { color: var(--text-muted); font-weight: 500; }
+    .keg-status { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+    .keg-temp { font-size: 0.9rem; color: var(--text-muted); }
+    .keg-figure { margin-top: auto; }
+    .keg-litres { font-size: 2.6rem; font-weight: 800; line-height: 1; }
+    .keg-litres small { font-size: 1rem; font-weight: 600; color: var(--text-muted); margin-left: 0.3rem; }
+    .keg-sub { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 0.35rem; }
+    .keg-actions { display: flex; gap: 0.5rem; }
+    .keg-actions button { flex: 1; }
+    .pick-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .pick-bar .chip {
+      font-size: 0.85rem;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .pick-bar .chip.on { border-color: var(--accent); color: var(--accent); }
+  </style>
 </head>
 <body>
-  <div id="header_container">
-    <div id="page_container" class="container pageEntry"></div>
-    <nav class="navbar" role="navigation" aria-label="main navigation">
-      <div class="navbar-brand">
-        <a
-          role="button"
-          class="navbar-burger burger"
-          aria-label="menu"
-          aria-expanded="false"
-          data-target="navbarMenu"
-        >
-          <span aria-hidden="true"></span>
-          <span aria-hidden="true"></span>
-          <span aria-hidden="true"></span>
-        </a>
-      </div>
+  <header data-nav="serving"></header>
+  <main>
+    <div class="pick-bar" id="pickBar" hidden>
+      <span class="muted">Show:</span>
+    </div>
+    <div class="serving-grid" id="grid"></div>
+    <p class="empty" id="empty" hidden>No kegs connected yet.</p>
+  </main>
 
-      <div id="navbarMenu" class="navbar-menu">
-        <div class="navbar-start">
-          <a class="navbar-item" href="/">Home</a>
-          <a class="navbar-item" href="/index.html">Kegs</a>
-          <a class="navbar-item" href="/history.html">History</a>
-          <div class="navbar-item has-dropdown" id="configureDropdown">
-            <a class="navbar-link" onclick="toggleDropdown(event)">Configure</a>
-            <div class="navbar-dropdown">
-              <a class="navbar-item" href="/taplist-setup.html">Tap Setup</a>
-              <a class="navbar-item" href="/tap-handles.html">Tap Handles</a>
-              <a class="navbar-item" href="/setup.html">Scale Setup</a>
-              <a class="navbar-item" href="/dashboard-setup.html">Dashboard Setup</a>
-              <a class="navbar-item" href="/server-update.html">Server Update</a>
-              <a class="navbar-item" href="/airlock-setup.html">Airlock Setup</a>
-              <a class="navbar-item" href="/transfer-scales.html">Transfer Scales</a>
-              <a class="navbar-item" href="/beverages.html">Beverages</a>
-            </div>
-          </div>
-        </div>
-        <div class="navbar-end">
-          <span class="navbar-item" id="serverVersion" style="font-size:0.75rem;opacity:0.5;"></span>
-        </div>
-      </div>
-    </nav>
-  </div>
+  <script src="/app.js"></script>
+  <script>
+    const MAX_KEGS = 3;
+    const grid = qs("#grid");
+    const emptyMsg = qs("#empty");
+    const pickBar = qs("#pickBar");
 
-    <section class="section">
-        <div class="container">
-            <h1 class="title is-1">Kegs</h1>
-            <div class="columns is-multiline" id="kegContainer"></div>
-        </div>
-    </section>
+    let kegs = new Map();     // id -> keg record
+    let connected = [];       // connected ids
+    let selection = loadSelection();
 
-    <section class="section" id="airlockSection">
-        <div class="container">
-            <h1 class="title is-1">Airlocks</h1>
-            <p class="subtitle">Fermentation airlocks (temperature and bubbles per minute)</p>
-            <div class="columns is-multiline" id="airlockContainer"></div>
-        </div>
-    </section>
-  </div>
+    function loadSelection() {
+      try {
+        const raw = localStorage.getItem("serving.selection");
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) { return null; }
+    }
+    function saveSelection() {
+      try { localStorage.setItem("serving.selection", JSON.stringify(selection)); } catch (_) {}
+    }
 
-    <script>
-      // Navbar burger menu
-      document.querySelectorAll('.navbar-burger').forEach(el =>
-        el.addEventListener('click', () => {
-          document.getElementById(el.dataset.target).classList.toggle('is-active');
-          el.classList.toggle('is-active');
+    function sortedIds() {
+      return [...kegs.values()]
+        .sort((a, b) => {
+          const ao = a.my_sort_order == null || a.my_sort_order === "" ? 1e9 : parseInt(a.my_sort_order, 10);
+          const bo = b.my_sort_order == null || b.my_sort_order === "" ? 1e9 : parseInt(b.my_sort_order, 10);
+          if (ao !== bo) return ao - bo;
+          return String(a.id).localeCompare(String(b.id));
         })
-      );
+        .map((k) => k.id);
+    }
 
-      // Server version
-      fetch('/api/alive')
-        .then(r => r.json())
-        .then(d => { if (d.version) document.getElementById('serverVersion').textContent = 'v' + d.version; })
-        .catch(() => {});
-
-      // Configure dropdown (click to toggle on desktop; hover handled by CSS)
-      function toggleDropdown(e) {
-        e.preventDefault();
-        document.getElementById('configureDropdown').classList.toggle('is-open');
+    function visibleIds() {
+      const all = sortedIds();
+      if (selection && selection.length) {
+        const filtered = all.filter((id) => selection.indexOf(id) !== -1);
+        return filtered.slice(0, MAX_KEGS);
       }
-      document.addEventListener('click', e => {
-        if (!e.target.closest('#configureDropdown'))
-          document.getElementById('configureDropdown')?.classList.remove('is-open');
+      return all.slice(0, MAX_KEGS);
+    }
+
+    function renderPickBar() {
+      const all = sortedIds();
+      pickBar.hidden = all.length <= MAX_KEGS;
+      if (pickBar.hidden) return;
+      pickBar.querySelectorAll(".chip").forEach((c) => c.remove());
+      const vis = visibleIds();
+      all.forEach((id) => {
+        const k = kegs.get(id);
+        const chip = ce("span", "chip" + (vis.indexOf(id) !== -1 ? " on" : ""));
+        chip.textContent = (k && k.my_label && k.my_label.trim()) || shortId(id);
+        chip.onclick = () => toggleSelection(id);
+        pickBar.appendChild(chip);
+      });
+    }
+
+    function toggleSelection(id) {
+      const base = selection && selection.length ? selection.slice() : visibleIds();
+      const i = base.indexOf(id);
+      if (i !== -1) base.splice(i, 1);
+      else base.push(id);
+      selection = base;
+      saveSelection();
+      render();
+    }
+
+    function shortId(id) {
+      return "Keg " + String(id).slice(0, 4);
+    }
+
+    function kegCard(keg) {
+      const card = ce("div", "card keg");
+      card.dataset.kegId = keg.id;
+
+      const online = connected.indexOf(keg.id) !== -1;
+      const pouring = keg.is_pouring && keg.is_pouring !== "0";
+      const temp = num(keg.keg_temperature);
+      const litres = litresLeft(keg);
+      const pct = percentLeft(keg);
+      const cap = num(keg.max_keg_volume);
+      const lastPour = num(keg.last_pour) || 0;
+
+      card.innerHTML =
+        '<div class="keg-top">' +
+          '<input class="keg-name" maxlength="40" placeholder="' + esc(shortId(keg.id)) + '" />' +
+          '<span class="keg-status">' +
+            '<span class="dot ' + (pouring ? "pouring" : online ? "online" : "") + '"></span>' +
+            '<span class="keg-temp">' + (temp != null ? temp.toFixed(1) + "°C" : "--") + '</span>' +
+          '</span>' +
+        '</div>' +
+        '<div class="keg-figure">' +
+          '<div class="keg-litres">' + litres.toFixed(1) + '<small>L left</small></div>' +
+          '<div class="keg-sub"><span>' + pct.toFixed(0) + '% full</span>' +
+            (cap ? '<span>of ' + cap.toFixed(1) + ' L</span>' : '') + '</div>' +
+          '<div class="bar"><i class="' + (pct < 20 ? "low" : "") + '" style="width:' + pct.toFixed(1) + '%"></i></div>' +
+          (lastPour > 0 ? '<div class="keg-sub"><span>Last pour</span><span>' + Math.round(lastPour * 1000) + ' ml</span></div>' : '') +
+        '</div>' +
+        '<div class="keg-actions">' +
+          '<button data-act="tare">Tare</button>' +
+        '</div>';
+
+      const nameInput = qs(".keg-name", card);
+      nameInput.value = (keg.my_label || "").trim();
+      nameInput.addEventListener("change", async () => {
+        try {
+          await api("/api/kegs/" + encodeURIComponent(keg.id) + "/label", "POST", { value: nameInput.value.trim() });
+          toast("Name saved");
+        } catch (e) {
+          toast(e.message, true);
+        }
       });
 
-        const kegContainer = document.getElementById('kegContainer');
-        let dragSourceColumn = null;
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+      qs('[data-act="tare"]', card).addEventListener("click", async (ev) => {
+        const btn = ev.currentTarget;
+        btn.disabled = true;
+        try {
+          await api("/api/kegs/" + encodeURIComponent(keg.id) + "/tare", "POST", {});
+          setTimeout(() => api("/api/kegs/" + encodeURIComponent(keg.id) + "/tare-release", "POST", {}).catch(() => {}), 600);
+          toast("Tared");
+        } catch (e) {
+          toast(e.message, true);
+        } finally {
+          setTimeout(() => (btn.disabled = false), 1200);
         }
+      });
 
-        // Escape a string for safe use inside a CSS attribute selector [attr="value"]
-        function cssEscapeAttrValue(str) {
-            if (str == null || typeof str !== 'string') return '';
-            return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-        }
+      return card;
+    }
 
-        function getFallbackScaleName(id, index = null) {
-            if (typeof index === 'number' && Number.isFinite(index)) {
-                return `Scale ${index + 1}`;
-            }
-            return 'Scale';
-        }
+    function render() {
+      const ids = visibleIds();
+      grid.className = "serving-grid count-" + ids.length;
+      grid.innerHTML = "";
+      ids.forEach((id) => grid.appendChild(kegCard(kegs.get(id))));
+      emptyMsg.hidden = kegs.size > 0;
+      renderPickBar();
+    }
 
-        function sortKegs(kegs) {
-            const ordered = [...kegs];
-            ordered.sort((a, b) => {
-                const aOrder = Number.parseInt(a.my_sort_order ?? '', 10);
-                const bOrder = Number.parseInt(b.my_sort_order ?? '', 10);
-                const aHas = Number.isFinite(aOrder);
-                const bHas = Number.isFinite(bOrder);
-                if (aHas && bHas && aOrder !== bOrder) return aOrder - bOrder;
-                if (aHas !== bHas) return aHas ? -1 : 1;
-                return String(a.id || '').localeCompare(String(b.id || ''));
-            });
-            return ordered;
-        }
+    async function refresh() {
+      try {
+        const [list, conn] = await Promise.all([api("/api/kegs"), api("/api/kegs/connected")]);
+        kegs = new Map((list || []).map((k) => [k.id, k]));
+        connected = conn || [];
+        render();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
 
-        function persistKegOrder() {
-            const orderedIds = Array.from(kegContainer.querySelectorAll('[data-keg-id]'))
-                .map(card => card.getAttribute('data-keg-id'))
-                .filter(Boolean);
+    connectWs((msg) => {
+      if (msg.type === "keg_removed") {
+        kegs.delete(msg.id);
+        render();
+        return;
+      }
+      if (msg.type) return;
+      if (!msg.id) return;
+      kegs.set(msg.id, msg);
+      if (connected.indexOf(msg.id) === -1) connected.push(msg.id);
+      render();
+    });
 
-            if (!orderedIds.length) return;
-
-            fetch('/api/kegs/order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ordered_ids: orderedIds }),
-            }).catch(err => {
-                console.error('Error saving keg order:', err);
-            });
-        }
-
-        function attachDragHandlers(column) {
-            if (!column) return;
-            column.draggable = true;
-
-            column.addEventListener('dragstart', () => {
-                dragSourceColumn = column;
-                column.classList.add('is-dragging');
-            });
-
-            column.addEventListener('dragend', () => {
-                column.classList.remove('is-dragging');
-                dragSourceColumn = null;
-                kegContainer.querySelectorAll('.column').forEach(col => col.classList.remove('drag-over'));
-                persistKegOrder();
-            });
-
-            column.addEventListener('dragover', (event) => {
-                event.preventDefault();
-                if (!dragSourceColumn || dragSourceColumn === column) return;
-                column.classList.add('drag-over');
-            });
-
-            column.addEventListener('dragleave', () => {
-                column.classList.remove('drag-over');
-            });
-
-            column.addEventListener('drop', (event) => {
-                event.preventDefault();
-                column.classList.remove('drag-over');
-                if (!dragSourceColumn || dragSourceColumn === column) return;
-
-                const columns = Array.from(kegContainer.children);
-                const sourceIndex = columns.indexOf(dragSourceColumn);
-                const targetIndex = columns.indexOf(column);
-
-                if (sourceIndex < targetIndex) {
-                    kegContainer.insertBefore(dragSourceColumn, column.nextSibling);
-                } else {
-                    kegContainer.insertBefore(dragSourceColumn, column);
-                }
-            });
-        }
-
-        function reorderColumnsInDom() {
-            const sortedColumns = Array.from(kegContainer.querySelectorAll('.column'))
-                .sort((a, b) => {
-                    const aOrder = Number.parseInt(a.getAttribute('data-sort-order') ?? '', 10);
-                    const bOrder = Number.parseInt(b.getAttribute('data-sort-order') ?? '', 10);
-                    const aHas = Number.isFinite(aOrder);
-                    const bHas = Number.isFinite(bOrder);
-                    if (aHas && bHas && aOrder !== bOrder) return aOrder - bOrder;
-                    if (aHas !== bHas) return aHas ? -1 : 1;
-                    const aId = a.querySelector('[data-keg-id]')?.getAttribute('data-keg-id') || '';
-                    const bId = b.querySelector('[data-keg-id]')?.getAttribute('data-keg-id') || '';
-                    return aId.localeCompare(bId);
-                });
-
-            sortedColumns.forEach(col => kegContainer.appendChild(col));
-        }
-
-        function createKegCard(kegData, index = null) {
-            const column = document.createElement('div');
-            column.classList.add('column', 'is-half');
-            if (kegData.my_sort_order != null && kegData.my_sort_order !== '') {
-                column.setAttribute('data-sort-order', kegData.my_sort_order);
-            } else {
-                column.removeAttribute('data-sort-order');
-            }
-
-            const amountLeft = parseFloat(kegData.amount_left) || 0;
-            const temperature = parseFloat(kegData.keg_temperature);
-            const percentLeft = parseFloat(kegData.percent_of_beer_left) || 0;
-            const displayMode = kegData.my_display_mode === 'percent_primary' ? 'percent_primary' : 'weight_primary';
-            const isPercentPrimary = displayMode === 'percent_primary';
-            const rawUnit = kegData.beer_left_unit || 'litre';
-            const volumeUnit = rawUnit === 'litre' ? 'L' : rawUnit;
-            const tempUnit = kegData.temperature_unit || '°C';
-
-            const lastPour = parseFloat(kegData.last_pour) || 0;
-            const isPouring = kegData.is_pouring && kegData.is_pouring !== "0";
-            const isCO2 = kegData.keg_mode_c02_beer === "2";
-
-            const pourConversions = { lbs: [16, 'oz'], kg: [1000, 'g'], gal: [128, 'oz'], litre: [1000, 'ml'], 'kg CO\u2082': [1000, 'g'], 'lbs CO\u2082': [16, 'oz'] };
-            const [pourMult, pourUnit] = pourConversions[rawUnit] || [1, volumeUnit];
-            const pourValue = lastPour * pourMult;
-
-            const label = kegData.my_label?.trim() || '';
-            const beerStyle = kegData.my_beer_style?.trim() || '';
-            const kegDate = kegData.my_keg_date?.trim() || '';
-            const abv = kegData.my_abv?.trim() || '';
-
-            const displayLabel = label
-                ? escapeHtml(label)
-                : `<span style="color:rgba(254,252,232,0.55);font-size:0.95rem;font-weight:500;">${escapeHtml(getFallbackScaleName(kegData.id, index))}</span>`;
-
-            const metaParts = [
-                beerStyle ? escapeHtml(beerStyle) : null,
-                abv       ? escapeHtml(abv) + '%'  : null,
-                kegDate   ? escapeHtml(kegDate)    : null,
-            ].filter(Boolean);
-
-            const isLow = percentLeft < 20;
-            const fillPct = Math.min(100, Math.max(0, percentLeft)).toFixed(1);
-
-            // CO2 bottle SVG — replaces the flat volume + progress bar for CO2 mode
-            let volumeSection;
-            if (isCO2) {
-                // Bottle path: neck (x=40–60) narrows into body (x=18–82), rounded bottom
-                const bottlePath = "M40,15 L60,15 L60,37 Q80,47 82,58 L82,152 Q82,162 70,162 L30,162 Q18,162 18,152 L18,58 Q20,47 40,37 Z";
-                // Fill from bottom up; entire path height = y15 to y162 = 147 units
-                const fillH = Math.max(0, (Math.min(100, percentLeft) / 100) * 147).toFixed(1);
-                const fillY = (162 - parseFloat(fillH)).toFixed(1);
-                // Unique clip-path ID per keg
-                const cid = 'bcl' + kegData.id;
-                volumeSection = `
-                    <div class="keg-bottle-section">
-                        <svg class="co2-bottle-svg" viewBox="0 0 100 172" xmlns="http://www.w3.org/2000/svg" aria-label="CO2 level: ${percentLeft.toFixed(0)}%">
-                            <defs>
-                                <clipPath id="${cid}">
-                                    <path d="${bottlePath}"/>
-                                </clipPath>
-                            </defs>
-                            <!-- Dark bottle interior -->
-                            <path d="${bottlePath}" class="co2-bottle-bg"/>
-                            <!-- Gas fill level -->
-                            <rect x="14" y="${fillY}" width="74" height="${fillH}" clip-path="url(#${cid})" class="co2-bottle-fill${isLow ? ' is-low' : ''}"/>
-                            <!-- Subtle left-edge gloss -->
-                            <rect x="18" y="62" width="10" height="70" rx="5" clip-path="url(#${cid})" class="co2-bottle-gloss"/>
-                            <!-- Bottle outline -->
-                            <path d="${bottlePath}" class="co2-bottle-stroke"/>
-                            <!-- Neck side lines -->
-                            <line x1="40" y1="15" x2="40" y2="37" class="co2-neck-line"/>
-                            <line x1="60" y1="15" x2="60" y2="37" class="co2-neck-line"/>
-                            <!-- Valve cap -->
-                            <rect x="36" y="3" width="28" height="14" rx="5" class="co2-valve"/>
-                            <line x1="50" y1="3" x2="50" y2="17" class="co2-valve-divider"/>
-                        </svg>
-                        <div class="keg-remaining-text">${percentLeft.toFixed(1)}% CO\u2082 remaining</div>
-                    </div>
-                `;
-            } else {
-                volumeSection = `
-                    <div class="keg-volume">
-                        <span class="keg-volume-number">${amountLeft.toFixed(2)}</span><span class="keg-volume-unit">${volumeUnit}</span>
-                    </div>
-                    <div class="keg-remaining">
-                        <div class="keg-progress-track">
-                            <div class="keg-progress-fill${isLow ? ' is-low' : ''}" style="width:${fillPct}%"></div>
-                        </div>
-                        <div class="keg-remaining-text">${percentLeft.toFixed(1)}% remaining</div>
-                    </div>
-                `;
-            }
-            const primarySection = (isPercentPrimary && !isCO2)
-                ? `
-                    <div class="keg-remaining is-primary${isCO2 ? ' is-co2-gauge' : ''}">
-                        ${isCO2 ? `
-                        <div class="co2-gauge-wrap">
-                            <div class="co2-gauge${isLow ? ' is-low' : ''}">
-                                <div class="co2-gauge-cap"></div>
-                                <div class="co2-gauge-body">
-                                    <div class="co2-gauge-fill${isLow ? ' is-low' : ''}" style="height:${fillPct}%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="keg-remaining-text">${percentLeft.toFixed(1)}% CO\u2082 remaining</div>` : `
-                        <div class="keg-remaining-big">${percentLeft.toFixed(1)}%</div>
-                        <div class="keg-remaining-text">remaining</div>`}
-                    </div>
-                    ${!isCO2 ? `
-                    <div class="keg-volume is-secondary">
-                        <span class="keg-volume-number">${amountLeft.toFixed(2)}</span><span class="keg-volume-unit">${volumeUnit}</span>
-                    </div>` : ''}`
-                : volumeSection;
-            const card = `
-                <div class="card keg-card${isCO2 ? ' is-co2' : ''}" data-keg-id="${kegData.id}">
-                    <button class="keg-forget-btn" title="Forget this scale" onclick="forgetKeg('${kegData.id}')">×</button>
-                    <div class="keg-header">
-                        <div class="keg-identity">
-                            <div class="keg-label-name">${displayLabel}${isCO2 ? '<span class="co2-badge">CO\u2082</span>' : ''}</div>
-                            ${metaParts.length ? `<div class="keg-meta">${metaParts.join(' · ')}</div>` : ''}
-                        </div>
-                        <div class="keg-status-row">
-                            <span class="pouring-indicator ${isPouring ? 'is-pouring' : ''}" title="${isPouring ? 'Pouring' : ''}"></span>
-                            <span class="keg-temp-badge">${!isNaN(temperature) ? temperature.toFixed(1) + tempUnit : '--'}</span>
-                        </div>
-                    </div>
-                    ${primarySection}
-                    ${!isCO2 && lastPour > 0 ? `<div class="keg-footer"><span class="keg-last-pour">Last pour · ${Math.round(pourValue)} ${pourUnit}</span></div>` : ''}
-                </div>
-            `;
-            column.innerHTML = card;
-            attachDragHandlers(column);
-            return column;
-        }
-
-        function forgetKeg(kegId) {
-            if (!confirm('Remove this scale from the dashboard?\n\nThis clears its stored data and disconnects the hardware. It will reappear if the device reconnects.')) return;
-            fetch(`/api/kegs/${encodeURIComponent(kegId)}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-                .then(r => r.json())
-                .then(d => {
-                    if (d.status !== 'ok') alert('Could not remove scale: ' + (d.error || 'unknown error'));
-                })
-                .catch(err => alert('Error: ' + err.message));
-        }
-
-        const airlockContainer = document.getElementById('airlockContainer');
-        const airlockSection = document.getElementById('airlockSection');
-        const tempUnit = '°C';
-
-        function createAirlockCard(airlockData) {
-            const column = document.createElement('div');
-            column.classList.add('column', 'is-one-third');
-            const temp = airlockData.temperature != null ? parseFloat(airlockData.temperature) : NaN;
-            const bpm = airlockData.bubbles_per_min != null ? parseFloat(airlockData.bubbles_per_min) : NaN;
-            const label = (airlockData.label && airlockData.label.trim()) ? escapeHtml(airlockData.label.trim()) : 'Airlock';
-            const card = `
-                <div class="card airlock-card" data-airlock-id="${escapeHtml(airlockData.id)}">
-                    <div class="card-content">
-                        <p class="title is-5">${label}</p>
-                        <div class="airlock-row">
-                            ${!isNaN(temp) ? `<span class="airlock-value">${temp.toFixed(1)}${tempUnit}</span>` : ''}
-                            ${!isNaN(bpm) ? `<span class="airlock-value">${bpm.toFixed(1)} bpm</span>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-            column.innerHTML = card;
-            return column;
-        }
-
-        // Fetch initial keg data
-        fetch('/api/kegs')
-            .then(response => response.json())
-            .then(kegs => {
-                if (kegs.length === 0) {
-                    kegContainer.innerHTML = '<div class="column"><p class="has-text-grey">No kegs found. Connect a keg to see data here.</p></div>';
-                } else {
-                    sortKegs(kegs).forEach((keg, index) => {
-                        kegContainer.appendChild(createKegCard(keg, index));
-                    });
-                }
-            })
-            .catch(err => {
-                kegContainer.innerHTML = '<div class="column"><p class="has-text-danger">Error loading kegs: ' + err.message + '</p></div>';
-            });
-
-        function loadAirlocks() {
-            fetch('/api/airlocks')
-                .then(response => response.json())
-                .then(airlocks => {
-                    if (airlocks.length === 0) {
-                        airlockContainer.innerHTML = '<div class="column"><p class="has-text-grey">No airlocks yet. Send data to <code>POST /api/airlocks/:id/data</code> to add one.</p></div>';
-                    } else {
-                        airlockContainer.innerHTML = '';
-                        airlocks.forEach(airlock => {
-                            airlockContainer.appendChild(createAirlockCard(airlock));
-                        });
-                    }
-                })
-                .catch(err => {
-                    airlockContainer.innerHTML = '<div class="column"><p class="has-text-danger">Error loading airlocks: ' + err.message + '</p></div>';
-                });
-        }
-
-        // Check global config to see if airlock support is enabled; hide section and skip loading if disabled
-        fetch('/api/config')
-            .then(response => response.ok ? response.json() : Promise.reject())
-            .then(cfg => {
-                const enabled = cfg.airlock_enabled !== false;
-                if (!enabled && airlockSection) {
-                    airlockSection.style.display = 'none';
-                } else {
-                    loadAirlocks();
-                }
-            })
-            .catch(() => {
-                // On error, fall back to previous behavior (show airlocks)
-                loadAirlocks();
-            });
-
-        // WebSocket connection
-        const socket = new WebSocket('/ws');
-
-        socket.addEventListener('open', (event) => {
-            console.log('WebSocket connection opened:', event);
-        });
-
-        socket.addEventListener('message', (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.type === 'keg_removed') {
-                const col = document.querySelector(`#kegContainer [data-keg-id="${cssEscapeAttrValue(msg.id)}"]`)?.closest('.column');
-                if (col) col.remove();
-                if (kegContainer.children.length === 0) {
-                    kegContainer.innerHTML = '<div class="column"><p class="has-text-grey">No kegs found. Connect a keg to see data here.</p></div>';
-                }
-            } else if (msg.type === 'airlock') {
-                const data = msg.data;
-                const airlockId = data.id;
-                const existingCard = document.querySelector(`#airlockContainer [data-airlock-id="${cssEscapeAttrValue(airlockId)}"]`);
-                if (existingCard) {
-                    const newCol = createAirlockCard(data);
-                    const col = existingCard.closest('.column');
-                    if (col) col.innerHTML = newCol.innerHTML;
-                } else if (airlockId) {
-                    airlockContainer.appendChild(createAirlockCard(data));
-                }
-            } else {
-                const updatedKeg = msg;
-                const kegId = updatedKeg.id;
-                const existingCard = document.querySelector(`#kegContainer [data-keg-id="${cssEscapeAttrValue(kegId)}"]`);
-                if (existingCard) {
-                    const col = existingCard.closest('.column');
-                    const index = col ? Array.from(kegContainer.children).indexOf(col) : null;
-                    const newCard = createKegCard(updatedKeg, index);
-                    existingCard.innerHTML = newCard.querySelector('.card').innerHTML;
-                    if (col) {
-                        if (updatedKeg.my_sort_order != null && updatedKeg.my_sort_order !== '') {
-                            col.setAttribute('data-sort-order', updatedKeg.my_sort_order);
-                        } else {
-                            col.removeAttribute('data-sort-order');
-                        }
-                    }
-                } else if (kegId) {
-                    kegContainer.appendChild(createKegCard(updatedKeg, kegContainer.children.length));
-                }
-                reorderColumnsInDom();
-            }
-        });
-
-        socket.addEventListener('error', (error) => {
-            console.error('WebSocket error:', error);
-        });
-
-        socket.addEventListener('close', (event) => {
-            console.log('WebSocket connection closed:', event);
-        });
-    </script>
-
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
 </body>
 </html>

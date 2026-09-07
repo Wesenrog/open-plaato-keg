@@ -1,12 +1,10 @@
 defmodule OpenPlaatoKeg.Models.KegDataTest do
   use ExUnit.Case
 
-  alias OpenPlaatoKeg.Models.AirlockData
   alias OpenPlaatoKeg.Models.KegData
 
   setup do
     :dets.close(:keg_data)
-    :dets.close(:airlock_data)
 
     unique = System.unique_integer([:positive])
     dir = Path.join(System.tmp_dir!(), "open_plaato_keg_test_#{unique}")
@@ -14,25 +12,40 @@ defmodule OpenPlaatoKeg.Models.KegDataTest do
 
     {:ok, _} = :dets.open_file(:keg_data, file: String.to_charlist(Path.join(dir, "kegs.dets")))
 
-    {:ok, _} =
-      :dets.open_file(:airlock_data, file: String.to_charlist(Path.join(dir, "airlocks.dets")))
-
     on_exit(fn ->
       :dets.close(:keg_data)
-      :dets.close(:airlock_data)
       File.rm_rf(dir)
     end)
 
     :ok
   end
 
-  test "devices excludes ids that are known airlocks" do
-    KegData.publish("real-keg", id: "real-keg", amount_left: "12.3")
-    KegData.publish("airlock-token", id: "airlock-token", amount_left: "0.0")
-    AirlockData.publish("airlock-token", temperature: "20.5")
+  test "devices lists every registered keg id" do
+    KegData.publish("keg-a", id: "keg-a", amount_left: "12.3")
+    KegData.publish("keg-b", id: "keg-b", amount_left: "0.0")
 
-    assert KegData.devices() == ["real-keg"]
-    assert KegData.all() == [%{id: "real-keg", amount_left: "12.3"}]
-    assert KegData.get("airlock-token") == %{}
+    assert Enum.sort(KegData.devices()) == ["keg-a", "keg-b"]
+  end
+
+  test "get returns stored properties plus a derived litre unit" do
+    KegData.publish("keg-a", id: "keg-a", amount_left: "12.3")
+
+    assert KegData.get("keg-a") == %{
+             id: "keg-a",
+             amount_left: "12.3",
+             beer_left_unit: "litre"
+           }
+  end
+
+  test "get derives a kg unit when the device measures by weight" do
+    KegData.publish("keg-a", id: "keg-a", amount_left: "9.0", measure_unit: "1")
+
+    assert KegData.get("keg-a")[:beer_left_unit] == "kg"
+  end
+
+  test "all returns one map per device" do
+    KegData.publish("keg-a", id: "keg-a", amount_left: "12.3")
+
+    assert KegData.all() == [%{id: "keg-a", amount_left: "12.3", beer_left_unit: "litre"}]
   end
 end

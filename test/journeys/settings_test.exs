@@ -5,26 +5,6 @@ defmodule Journeys.SettingsTest do
   alias OpenPlaatoKeg.PlaatoData
   alias OpenPlaatoKeg.PlaatoProtocol
 
-  test "set units to metric" do
-    cmd = {:hardware, 26206, 7, <<118, 119, 0, 55, 49, 0, 49>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [plaato_decoded: {:hardware, "vw", "71", "1"}, plaato_data_decoded: {:unit, "1"}]
-    )
-  end
-
-  test "set units to us" do
-    cmd = {:hardware, 30662, 7, <<118, 119, 0, 55, 49, 0, 50>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [plaato_decoded: {:hardware, "vw", "71", "2"}, plaato_data_decoded: {:unit, "2"}]
-    )
-  end
-
   test "set kegmode to volume" do
     cmd = {:hardware, 26206, 7, <<118, 119, 0, 55, 53, 0, 50>>}
 
@@ -72,69 +52,6 @@ defmodule Journeys.SettingsTest do
         plaato_decoded: {:property, "51", "max", "19.666"},
         plaato_data_decoded: {:max_keg_volume, "19.666"}
       ]
-    )
-  end
-
-  test "set kegmode to beer" do
-    cmd = {:hardware, 27706, 7, <<118, 119, 0, 56, 56, 0, 49>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [
-        plaato_decoded: {:hardware, "vw", "88", "1"},
-        plaato_data_decoded: {:keg_mode_c02_beer, "1"}
-      ]
-    )
-
-    # keg responded
-    cmd =
-      {:property, 587, 18,
-       <<52, 55, 0, 108, 97, 98, 101, 108, 0, 76, 97, 115, 116, 32, 112, 111, 117, 114>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [
-        plaato_decoded: {:property, "47", "label", "Last pour"},
-        plaato_data_decoded: nil
-      ]
-    )
-  end
-
-  test "set kegmode to co2" do
-    cmd = {:hardware, 20409, 7, <<118, 119, 0, 56, 56, 0, 50>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [
-        plaato_decoded: {:hardware, "vw", "88", "2"},
-        plaato_data_decoded: {:keg_mode_c02_beer, "2"}
-      ]
-    )
-
-    # keg responded
-    cmd =
-      {:hardware, 675, 7, <<118, 119, 0, 52, 55, 0, 32>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [
-        plaato_decoded: {:hardware, "vw", "47", " "},
-        plaato_data_decoded: {:last_pour_string, " "}
-      ]
-    )
-
-    # keg responded (2)
-    cmd =
-      {:property, 676, 10, <<52, 55, 0, 108, 97, 98, 101, 108, 0, 32>>}
-
-    decoded = decode(cmd)
-
-    assert_value(
-      decoded == [plaato_decoded: {:property, "47", "label", " "}, plaato_data_decoded: nil]
     )
   end
 

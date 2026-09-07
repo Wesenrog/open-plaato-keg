@@ -16,10 +16,10 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
 
   def handle_data(data, socket, state) do
     # Acknowledge Blynk-style packets, echoing the msg_id from the incoming frame.
-    # Old firmware (e.g. Plaato Airlock NodeMCU) validates that the response msg_id
-    # matches the request before firing BLYNK_CONNECTED. If we always respond with
-    # msg_id=1 (the default), the login ack is never recognised when internal info
-    # was sent first (as msg_id=1), causing BLYNK_CONNECTED to never fire.
+    # Some firmware validates that the response msg_id matches the request before
+    # firing BLYNK_CONNECTED. If we always respond with msg_id=1 (the default),
+    # the login ack is never recognised when internal info was sent first
+    # (as msg_id=1), causing BLYNK_CONNECTED to never fire.
     ack =
       case data do
         <<_cmd::8, msg_id::16, _rest::binary>> -> BlynkProtocol.response_success(msg_id)
@@ -44,8 +44,8 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
       # Unregister the socket (only affects this process's registration)
       Registry.unregister(OpenPlaatoKeg.KegSocketRegistry, state.keg_id)
 
-      # Only push the disconnect update for kegs (not airlocks).
-      # Airlocks don't have is_pouring and their ID won't be in KegData.
+      # Only push a disconnect update for kegs we already know about, to avoid
+      # creating a phantom entry for an unrecognised connection.
       if state.keg_id in OpenPlaatoKeg.Models.KegData.devices() do
         # Prevent phantom "pouring" UI by pushing a disconnect update.
         # Plaato values are typically stringy, so "0" is safest.
@@ -71,9 +71,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
             %{state | keg_id: keg_id}
 
           {:error, {:already_registered, old_pid}} ->
-            Logger.warning(
-              "Keg #{keg_id} already registered by #{inspect(old_pid)}; taking over"
-            )
+            Logger.warning("Keg #{keg_id} already registered by #{inspect(old_pid)}; taking over")
 
             # Kill stale handler holding the unique key so we can take over immediately.
             if old_pid != self(), do: Process.exit(old_pid, :kill)

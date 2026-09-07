@@ -42,13 +42,10 @@ defmodule OpenPlaatoKeg.MixProject do
   defp deps do
     [
       {:thousand_island, "~> 1.3"},
-      {:prometheus_ex, "~> 3.1"},
       {:bandit, "~> 1.0"},
       {:plug, "~> 1.16"},
       {:websock_adapter, "~> 0.5"},
       {:poison, "~> 6.0"},
-      {:tortoise, "~> 0.10"},
-      {:req, "~> 0.5"},
       {:credo, "~> 1.7", only: [:dev, :ci], runtime: false},
       {:assert_value, "~> 0.1", only: [:dev, :test], runtime: false}
     ]

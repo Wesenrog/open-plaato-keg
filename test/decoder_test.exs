@@ -5,6 +5,9 @@ defmodule DecoderTest do
   alias OpenPlaatoKeg.PlaatoData
   alias OpenPlaatoKeg.PlaatoProtocol
 
+  # The expected term below is a snapshot of decoding every captured frame in
+  # local/bin/ through the full pipeline. Regenerate with local/dump.exs after
+  # intentional decoder changes.
   test "various messages decoder" do
     folder = "local/bin"
 
@@ -139,7 +142,8 @@ defmodule DecoderTest do
               firmware_version: "2.0.10a",
               max_keg_volume: "20.059",
               amount_left: "0.040",
-              percent_of_beer_left: "0.000"
+              percent_of_beer_left: "0.000",
+              volume_raw: "0.000"
             ]
           ],
           [
@@ -163,7 +167,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\f\\0\\nvw\\065\\01000\"",
             blynk_decoded: [{:hardware, 12, 10, <<118, 119, 0, 54, 53, 0, 49, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "65", "1000"}],
-            plaato_payload_decoded: [og: "1000"]
+            plaato_payload_decoded: []
           ],
           [
             binary:
@@ -196,7 +200,15 @@ defmodule DecoderTest do
               {:hardware, "vw", "86", "0.000"},
               {:property, "87", "min", "-20.000"}
             ],
-            plaato_payload_decoded: [fg: "1000", last_pour: "0.184", min_temperature: "0.000"]
+            plaato_payload_decoded: [
+              last_pour: "0.184",
+              weight_raw: "200621",
+              temperature_correction: "-44.000",
+              min_temperature: "-20.000",
+              min_temperature_max: "40.000",
+              min_temperature: "0.000",
+              max_temperature_min: "-20.000"
+            ]
           ],
           [
             binary: <<19, 0, 21, 0, 13, 56, 55, 0, 109, 97, 120, 0, 52, 48, 46, 48, 48, 48>>,
@@ -205,7 +217,7 @@ defmodule DecoderTest do
               {:property, 21, 13, <<56, 55, 0, 109, 97, 120, 0, 52, 48, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:property, "87", "max", "40.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [max_temperature: "40.000"]
           ],
           [
             binary: <<20, 0, 22, 0, 12, 118, 119, 0, 56, 55, 0, 51, 48, 46, 48, 48, 48>>,
@@ -221,7 +233,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\x17\\0\\bvw\\073\\0kg\"",
             blynk_decoded: [{:hardware, 23, 8, <<118, 119, 0, 55, 51, 0, 107, 103>>}],
             plaato_decoded: [{:hardware, "vw", "73", "kg"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [weight_unit: "kg"]
           ],
           [
             binary:
@@ -274,7 +286,7 @@ defmodule DecoderTest do
               {:hardware, 32, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "48", "0.000"}, {:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: [percent_of_beer_left: "0.000"]
+            plaato_payload_decoded: [percent_of_beer_left: "0.000", volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 33, 0, 11, 118, 119, 0, 52, 56, 0, 48, 46, 48, 48, 48>>,
@@ -288,7 +300,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\\"\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 34, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 35, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 48, 54, 48>>,
@@ -331,8 +343,10 @@ defmodule DecoderTest do
             ],
             plaato_payload_decoded: [
               percent_of_beer_left: "1.000",
+              volume_raw: "1.000",
               amount_left: "0.290",
               percent_of_beer_left: "4.000",
+              volume_raw: "4.000",
               amount_left: "0.970"
             ]
           ],
@@ -352,7 +366,7 @@ defmodule DecoderTest do
               {:hardware, 44, 12, <<118, 119, 0, 53, 52, 0, 49, 48, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "10.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "10.000"]
           ],
           [
             binary:
@@ -385,8 +399,10 @@ defmodule DecoderTest do
             plaato_payload_decoded: [
               amount_left: "2.000",
               percent_of_beer_left: "16.000",
+              volume_raw: "16.000",
               amount_left: "3.230",
               percent_of_beer_left: "21.000",
+              volume_raw: "21.000",
               amount_left: "4.290"
             ]
           ],
@@ -406,7 +422,7 @@ defmodule DecoderTest do
               {:hardware, 53, 12, <<118, 119, 0, 53, 52, 0, 50, 52, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "24.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "24.000"]
           ],
           [
             binary: <<20, 0, 54, 0, 11, 118, 119, 0, 53, 49, 0, 52, 46, 57, 49, 48>>,
@@ -431,7 +447,7 @@ defmodule DecoderTest do
               {:hardware, 56, 12, <<118, 119, 0, 53, 52, 0, 50, 54, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "26.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "26.000"]
           ],
           [
             binary: <<20, 0, 57, 0, 11, 118, 119, 0, 53, 49, 0, 53, 46, 50, 52, 48>>,
@@ -456,7 +472,7 @@ defmodule DecoderTest do
               {:hardware, 59, 12, <<118, 119, 0, 53, 52, 0, 50, 55, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "27.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "27.000"]
           ],
           [
             binary:
@@ -483,6 +499,7 @@ defmodule DecoderTest do
             plaato_payload_decoded: [
               amount_left: "5.460",
               percent_of_beer_left: "29.000",
+              volume_raw: "29.000",
               amount_left: "5.880",
               percent_of_beer_left: "32.000"
             ]
@@ -494,7 +511,7 @@ defmodule DecoderTest do
               {:hardware, 65, 12, <<118, 119, 0, 53, 52, 0, 51, 50, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "32.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "32.000"]
           ],
           [
             binary: <<20, 0, 66, 0, 11, 118, 119, 0, 53, 49, 0, 54, 46, 52, 50, 48>>,
@@ -519,7 +536,7 @@ defmodule DecoderTest do
               {:hardware, 68, 12, <<118, 119, 0, 53, 52, 0, 51, 51, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "33.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "33.000"]
           ],
           [
             binary: <<20, 0, 69, 0, 11, 118, 119, 0, 53, 49, 0, 54, 46, 55, 51, 48>>,
@@ -544,7 +561,7 @@ defmodule DecoderTest do
               {:hardware, 71, 12, <<118, 119, 0, 53, 52, 0, 50, 56, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "28.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "28.000"]
           ],
           [
             binary: <<20, 0, 72, 0, 11, 118, 119, 0, 53, 49, 0, 53, 46, 55, 50, 48>>,
@@ -569,7 +586,7 @@ defmodule DecoderTest do
               {:hardware, 74, 12, <<118, 119, 0, 53, 52, 0, 50, 48, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "20.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "20.000"]
           ],
           [
             binary: <<20, 0, 75, 0, 11, 118, 119, 0, 53, 49, 0, 52, 46, 48, 50, 48>>,
@@ -594,7 +611,7 @@ defmodule DecoderTest do
               {:hardware, 77, 12, <<118, 119, 0, 53, 52, 0, 49, 48, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "10.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "10.000"]
           ],
           [
             binary: <<20, 0, 78, 0, 11, 118, 119, 0, 53, 49, 0, 50, 46, 49, 56, 48>>,
@@ -615,7 +632,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0P\\0\\vvw\\054\\02.000\"",
             blynk_decoded: [{:hardware, 80, 11, <<118, 119, 0, 53, 52, 0, 50, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "2.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "2.000"]
           ],
           [
             binary: <<20, 0, 81, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 53, 48, 48>>,
@@ -636,7 +653,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0S\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 83, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 84, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 48, 52, 48>>,
@@ -671,7 +688,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0X\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 88, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 89, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 48, 55, 48>>,
@@ -723,10 +740,13 @@ defmodule DecoderTest do
               {:hardware, "vw", "54", "19.000"}
             ],
             plaato_payload_decoded: [
+              volume_raw: "3.000",
               amount_left: "0.600",
               percent_of_beer_left: "10.000",
+              volume_raw: "10.000",
               amount_left: "2.010",
-              percent_of_beer_left: "19.000"
+              percent_of_beer_left: "19.000",
+              volume_raw: "19.000"
             ]
           ],
           [
@@ -780,10 +800,13 @@ defmodule DecoderTest do
               {:hardware, "vw", "48", "37.000"}
             ],
             plaato_payload_decoded: [
+              volume_raw: "29.000",
               amount_left: "5.810",
               percent_of_beer_left: "36.000",
+              volume_raw: "36.000",
               amount_left: "7.270",
               percent_of_beer_left: "39.000",
+              volume_raw: "39.000",
               amount_left: "7.820",
               percent_of_beer_left: "37.000"
             ]
@@ -795,7 +818,7 @@ defmodule DecoderTest do
               {:hardware, 110, 12, <<118, 119, 0, 53, 52, 0, 51, 55, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "37.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "37.000"]
           ],
           [
             binary: <<20, 0, 111, 0, 11, 118, 119, 0, 53, 49, 0, 55, 46, 52, 50, 48>>,
@@ -820,7 +843,7 @@ defmodule DecoderTest do
               {:hardware, 113, 12, <<118, 119, 0, 53, 52, 0, 50, 56, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "28.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "28.000"]
           ],
           [
             binary: <<20, 0, 114, 0, 11, 118, 119, 0, 53, 49, 0, 53, 46, 54, 50, 48>>,
@@ -845,7 +868,7 @@ defmodule DecoderTest do
               {:hardware, 116, 12, <<118, 119, 0, 53, 52, 0, 49, 56, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "18.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "18.000"]
           ],
           [
             binary: <<20, 0, 117, 0, 11, 118, 119, 0, 53, 49, 0, 51, 46, 54, 51, 48>>,
@@ -866,7 +889,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0w\\0\\vvw\\054\\08.000\"",
             blynk_decoded: [{:hardware, 119, 11, <<118, 119, 0, 53, 52, 0, 56, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "8.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "8.000"]
           ],
           [
             binary: <<20, 0, 120, 0, 11, 118, 119, 0, 53, 49, 0, 49, 46, 54, 55, 48>>,
@@ -899,8 +922,10 @@ defmodule DecoderTest do
             ],
             plaato_payload_decoded: [
               percent_of_beer_left: "1.000",
+              volume_raw: "1.000",
               amount_left: "0.210",
-              percent_of_beer_left: "0.000"
+              percent_of_beer_left: "0.000",
+              volume_raw: "0.000"
             ]
           ],
           [
@@ -936,7 +961,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\x82\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 130, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary:
@@ -968,6 +993,7 @@ defmodule DecoderTest do
               is_pouring: "255",
               last_pour_string: "0.01L",
               percent_of_beer_left: "0.000",
+              volume_raw: "0.000",
               amount_left: "0.000"
             ]
           ],
@@ -1022,12 +1048,15 @@ defmodule DecoderTest do
               {:hardware, "vw", "51", "0.030"}
             ],
             plaato_payload_decoded: [
+              volume_raw: "0.000",
               amount_left: "-0.010",
               last_pour_string: "0.06L",
               percent_of_beer_left: "0.000",
+              volume_raw: "0.000",
               amount_left: "0.000",
               last_pour_string: "0.05L",
               percent_of_beer_left: "0.000",
+              volume_raw: "0.000",
               amount_left: "0.030"
             ]
           ],
@@ -1057,7 +1086,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\x98\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 152, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 153, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 48, 52, 48>>,
@@ -1092,7 +1121,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\x9D\\0\\vvw\\055\\00.000\"",
             blynk_decoded: [{:hardware, 157, 11, <<118, 119, 0, 53, 53, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "55", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [pour_volume_raw: "0.000"]
           ],
           [
             binary:
@@ -1156,7 +1185,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\xA5\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 165, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 166, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 48, 56, 48>>,
@@ -1184,7 +1213,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\xA9\\0\\vvw\\054\\03.000\"",
             blynk_decoded: [{:hardware, 169, 11, <<118, 119, 0, 53, 52, 0, 51, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "3.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "3.000"]
           ],
           [
             binary:
@@ -1217,8 +1246,10 @@ defmodule DecoderTest do
             plaato_payload_decoded: [
               amount_left: "0.600",
               percent_of_beer_left: "8.000",
+              volume_raw: "8.000",
               amount_left: "1.700",
               percent_of_beer_left: "13.000",
+              volume_raw: "13.000",
               amount_left: "2.700"
             ]
           ],
@@ -1238,7 +1269,7 @@ defmodule DecoderTest do
               {:hardware, 178, 12, <<118, 119, 0, 53, 52, 0, 49, 51, 46, 48, 48, 48>>}
             ],
             plaato_decoded: [{:hardware, "vw", "54", "13.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "13.000"]
           ],
           [
             binary:
@@ -1268,8 +1299,10 @@ defmodule DecoderTest do
             plaato_payload_decoded: [
               amount_left: "2.780",
               percent_of_beer_left: "11.000",
+              volume_raw: "11.000",
               amount_left: "2.250",
-              percent_of_beer_left: "5.000"
+              percent_of_beer_left: "5.000",
+              volume_raw: "5.000"
             ]
           ],
           [
@@ -1291,7 +1324,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\xBB\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 187, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 188, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 49, 54, 48>>,
@@ -1312,7 +1345,7 @@ defmodule DecoderTest do
             inspected: "\"\\x14\\0\\xBE\\0\\vvw\\054\\00.000\"",
             blynk_decoded: [{:hardware, 190, 11, <<118, 119, 0, 53, 52, 0, 48, 46, 48, 48, 48>>}],
             plaato_decoded: [{:hardware, "vw", "54", "0.000"}],
-            plaato_payload_decoded: []
+            plaato_payload_decoded: [volume_raw: "0.000"]
           ],
           [
             binary: <<20, 0, 191, 0, 11, 118, 119, 0, 53, 49, 0, 48, 46, 48, 52, 48>>,

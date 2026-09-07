@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Keg Devices</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .devices { display: flex; flex-direction: column; gap: 1rem; max-width: 760px; margin: 0 auto; }
+    .dev { }
+    .dev-head { display: flex; align-items: center; gap: 0.75rem; cursor: pointer; }
+    .dev-head .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: var(--text-muted); }
+    .dev-head .nm { font-weight: 700; }
+    .dev-head .spacer { margin-left: auto; }
+    .dev-body { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; display: none; }
+    .dev.open .dev-body { display: block; }
+    .dev-weight { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.75rem; }
+    .dev-weight small { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
+    .grp { display: flex; gap: 0.5rem; align-items: flex-end; }
+    .grp .field { flex: 1; margin: 0.5rem 0; }
+    .row-actions { display: flex; justify-content: space-between; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <header data-nav="devices"></header>
+  <main>
+    <div class="devices" id="list"></div>
+    <p class="empty" id="empty" hidden>No keg devices seen yet. Connect a scale to the TCP port.</p>
+  </main>
+
+  <script src="/app.js"></script>
+  <script>
+    const list = qs("#list");
+    const emptyMsg = qs("#empty");
+    let devices = [];       // ids (all known)
+    let connected = [];     // connected ids
+    let records = new Map();
+    let openId = null;
+
+    async function refresh() {
+      try {
+        const [ids, conn, all] = await Promise.all([
+          api("/api/kegs/devices"),
+          api("/api/kegs/connected"),
+          api("/api/kegs"),
+        ]);
+        const merged = new Set([...(ids || []), ...(conn || [])]);
+        devices = [...merged].sort();
+        connected = conn || [];
+        records = new Map((all || []).map((k) => [k.id, k]));
+        render();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }
+
+    function render() {
+      emptyMsg.hidden = devices.length > 0;
+      list.innerHTML = "";
+      devices.forEach((id) => list.appendChild(deviceCard(id)));
+    }
+
+    function deviceCard(id) {
+      const rec = records.get(id) || {};
+      const online = connected.indexOf(id) !== -1;
+      const name = (rec.my_label || "").trim();
+      const needsSetup = online && !name;
+
+      const card = ce("div", "card dev" + (openId === id ? " open" : ""));
+      card.dataset.id = id;
+
+      const raw = num(rec.weight_raw);
+      const litres = litresLeft(rec);
+      const weightTxt = raw != null ? raw.toFixed(2) : litres.toFixed(2);
+
+      card.innerHTML =
+        '<div class="dev-head">' +
+          '<span class="dot ' + (online ? "online" : "") + '"></span>' +
+          '<span class="nm">' + (name ? esc(name) : "Unnamed keg") + '</span>' +
+          (needsSetup ? '<span class="badge">Needs setup</span>' : '') +
+          '<span class="spacer"></span>' +
+          '<span class="id">' + esc(id) + '</span>' +
+        '</div>' +
+        '<div class="dev-body">' +
+          '<div class="dev-weight">' + weightTxt + ' <small>kg</small></div>' +
+          '<label class="field"><span>Name</span>' +
+            '<div class="grp"><input class="f-name" maxlength="40" placeholder="e.g. Left keg" />' +
+            '<button class="b-name">Save</button></div></label>' +
+          '<label class="field"><span>Known-weight calibration (kg)</span>' +
+            '<div class="grp"><input class="f-cal" type="number" min="0" step="0.001" inputmode="decimal" placeholder="known mass on scale" />' +
+            '<button class="b-cal">Calibrate</button></div></label>' +
+          '<label class="field"><span>Tare</span>' +
+            '<div class="grp"><button class="b-tare">Zero the scale</button></div></label>' +
+          '<label class="field"><span>Default full volume (L)</span>' +
+            '<div class="grp"><input class="f-max" type="number" min="1" step="0.1" inputmode="decimal" placeholder="e.g. 19" />' +
+            '<button class="b-max">Save</button></div></label>' +
+          '<label class="field"><span>Sensitivity</span>' +
+            '<div class="grp"><select class="f-sens">' +
+              '<option value="very_low">Very low</option><option value="low">Low</option>' +
+              '<option value="medium">Medium</option><option value="high">High</option>' +
+            '</select><button class="b-sens">Apply</button></div></label>' +
+          '<label class="field"><span>Temperature offset (°C)</span>' +
+            '<div class="grp"><input class="f-toff" type="number" step="0.1" inputmode="decimal" placeholder="e.g. -1.5" />' +
+            '<button class="b-toff">Apply</button></div></label>' +
+          '<div class="row-actions">' +
+            '<span class="muted">' + (rec.firmware_version ? "fw " + esc(rec.firmware_version) : "") + '</span>' +
+            '<button class="b-del danger">Remove device</button>' +
+          '</div>' +
+        '</div>';
+
+      qs(".dev-head", card).addEventListener("click", () => {
+        openId = openId === id ? null : id;
+        render();
+      });
+
+      const post = (path, body) =>
+        api("/api/kegs/" + encodeURIComponent(id) + path, "POST", body || {});
+
+      const nameInput = qs(".f-name", card);
+      nameInput.value = name;
+      const maxInput = qs(".f-max", card);
+      if (rec.max_keg_volume != null && maxInput.value === "") maxInput.value = rec.max_keg_volume;
+
+      qs(".b-name", card).addEventListener("click", () =>
+        post("/label", { value: nameInput.value.trim() }).then(() => { toast("Name saved"); refresh(); }).catch((e) => toast(e.message, true))
+      );
+      qs(".b-cal", card).addEventListener("click", () => {
+        const v = qs(".f-cal", card).value.trim();
+        if (!v) return toast("Enter the known mass", true);
+        post("/calibrate-known-weight", { value: v }).then(() => toast("Calibration sent")).catch((e) => toast(e.message, true));
+      });
+      qs(".b-tare", card).addEventListener("click", () => {
+        post("/tare").then(() => setTimeout(() => post("/tare-release").catch(() => {}), 600))
+          .then(() => toast("Tared")).catch((e) => toast(e.message, true));
+      });
+      qs(".b-max", card).addEventListener("click", () => {
+        const v = maxInput.value.trim();
+        if (!v) return toast("Enter a volume", true);
+        post("/max-keg-volume", { value: v }).then(() => toast("Saved")).catch((e) => toast(e.message, true));
+      });
+      qs(".b-sens", card).addEventListener("click", () =>
+        post("/sensitivity", { value: qs(".f-sens", card).value }).then(() => toast("Applied")).catch((e) => toast(e.message, true))
+      );
+      qs(".b-toff", card).addEventListener("click", () => {
+        const v = qs(".f-toff", card).value.trim();
+        if (v === "") return toast("Enter an offset", true);
+        post("/temperature-offset", { value: v }).then(() => toast("Applied")).catch((e) => toast(e.message, true));
+      });
+      qs(".b-del", card).addEventListener("click", () => {
+        if (!confirm("Remove this device and all its stored data?")) return;
+        post("/delete").then(() => { toast("Removed"); openId = null; refresh(); }).catch((e) => toast(e.message, true));
+      });
+
+      return card;
+    }
+
+    connectWs((msg) => {
+      if (msg.type === "keg_removed") {
+        records.delete(msg.id);
+        refresh();
+        return;
+      }
+      if (msg.type || !msg.id) return;
+      records.set(msg.id, msg);
+      if (openId === msg.id) {
+        const w = qs('.dev[data-id="' + CSS.escape(msg.id) + '"] .dev-weight');
+        if (w) {
+          const raw = num(msg.weight_raw);
+          w.innerHTML = (raw != null ? raw.toFixed(2) : litresLeft(msg).toFixed(2)) + ' <small>kg</small>';
+        }
+      }
+    });
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

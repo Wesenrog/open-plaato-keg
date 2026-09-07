@@ -18,13 +18,7 @@ defmodule OpenPlaatoKeg.PlaatoData do
     {:hardware, "vw", "60"} => :tare,
     {:hardware, "vw", "61"} => :known_weight_calibrate,
     {:hardware, "vw", "62"} => :empty_keg_weight,
-    {:hardware, "vw", "64"} => :beer_style,
-    {:hardware, "vw", "65"} => :og,
-    {:hardware, "vw", "66"} => :fg,
-    {:hardware, "vw", "67"} => :date,
-    {:hardware, "vw", "68"} => :calculated_abv,
     {:hardware, "vw", "69"} => :keg_temperature_string,
-    {:hardware, "vw", "70"} => :calculated_alcohol_string,
     {:hardware, "vw", "71"} => :unit,
     {:hardware, "vw", "72"} => :calculate,
     {:hardware, "vw", "73"} => :weight_unit,
@@ -37,7 +31,6 @@ defmodule OpenPlaatoKeg.PlaatoData do
     {:hardware, "vw", "83"} => :leak_detection,
     {:hardware, "vw", "86"} => :min_temperature,
     {:hardware, "vw", "87"} => :max_temperature,
-    {:hardware, "vw", "88"} => :keg_mode_c02_beer,
     {:hardware, "vw", "89"} => :sensitivity,
     {:hardware, "vw", "92"} => :chip_temperature_string,
     {:hardware, "vw", "93"} => :firmware_version,
@@ -45,12 +38,7 @@ defmodule OpenPlaatoKeg.PlaatoData do
     {:property, "86", "min"} => :min_temperature,
     {:property, "86", "max"} => :min_temperature_max,
     {:property, "87", "min"} => :max_temperature_min,
-    {:property, "87", "max"} => :max_temperature,
-
-    # Plaato Airlock pins
-    {:hardware, "vw", "99"} => :airlock_error,
-    {:hardware, "vw", "100"} => :airlock_bubble_count,
-    {:hardware, "vw", "101"} => :airlock_temperature
+    {:property, "87", "max"} => :max_temperature
   }
 
   def decode(commands) when is_list(commands) do

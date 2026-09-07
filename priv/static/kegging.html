@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kegging</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .kegging { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem; }
+    .device-row { display: flex; gap: 0.75rem; align-items: center; }
+    .device-row select { flex: 1; }
+    .weight-readout { text-align: center; padding: 1.5rem 0; }
+    .weight-readout .kg { font-size: 4rem; font-weight: 800; line-height: 1; }
+    .weight-readout .kg small { font-size: 1.4rem; color: var(--text-muted); margin-left: 0.4rem; }
+    .weight-readout .status { margin-top: 0.6rem; color: var(--text-muted); font-size: 0.9rem; }
+    .step { display: flex; flex-direction: column; gap: 0.6rem; }
+    .step h3 { margin: 0; font-size: 1rem; }
+    .step .row { display: flex; gap: 0.5rem; }
+    .step .row input { flex: 1; }
+    .fill-figure .big { font-size: 2rem; font-weight: 800; }
+    .fill-figure .sub { color: var(--text-muted); font-size: 0.9rem; margin: 0.3rem 0 0.5rem; }
+    .fill-figure.near-full .big { color: var(--good); }
+    .disabled-note { color: var(--text-muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <header data-nav="kegging"></header>
+  <main>
+    <div class="kegging">
+      <div class="card">
+        <div class="device-row">
+          <select id="device"><option value="">Select a connected keg…</option></select>
+          <button id="refreshDevices" title="Reload list">↻</button>
+        </div>
+      </div>
+
+      <div id="panel" hidden>
+        <div class="card weight-readout">
+          <div class="kg"><span id="weight">--</span><small>kg net</small></div>
+          <div class="status" id="wstatus">waiting for data…</div>
+        </div>
+
+        <div class="card step">
+          <h3>1 · Empty keg</h3>
+          <p class="disabled-note">Put the empty keg on the scale, then capture its weight as the tare.</p>
+          <div class="row">
+            <button id="setEmpty" class="primary">Set empty keg</button>
+          </div>
+          <div class="disabled-note" id="emptyVal"></div>
+        </div>
+
+        <div class="card step">
+          <h3>2 · Full volume</h3>
+          <div class="row">
+            <input id="maxVol" type="number" min="1" step="0.1" inputmode="decimal" placeholder="e.g. 19" />
+            <button id="saveMax">Save</button>
+          </div>
+          <div class="disabled-note" id="maxVal"></div>
+        </div>
+
+        <div class="card step">
+          <h3>3 · Fill</h3>
+          <div class="fill-figure" id="fillFigure">
+            <div class="big"><span id="fillPct">0</span>%</div>
+            <div class="sub"><span id="fillL">0.0</span> L of <span id="fillCap">–</span> L</div>
+            <div class="bar"><i id="fillBar" style="width:0%"></i></div>
+          </div>
+        </div>
+
+        <div class="card step">
+          <h3>4 · Done</h3>
+          <div class="row">
+            <button id="nextKeg">Start next keg</button>
+          </div>
+        </div>
+
+        <details class="card">
+          <summary>Calibration &amp; advanced</summary>
+          <label class="field"><span>Known-weight calibration (kg)</span>
+            <div class="step row">
+              <input id="calWeight" type="number" min="0" step="0.001" inputmode="decimal" placeholder="known mass on scale" />
+              <button id="calBtn">Calibrate</button>
+            </div>
+          </label>
+          <label class="field"><span>Tare (zero the scale)</span>
+            <div class="step row"><button id="tareBtn">Tare now</button></div>
+          </label>
+          <label class="field"><span>Sensitivity</span>
+            <div class="step row">
+              <select id="sens">
+                <option value="very_low">Very low</option>
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+              <button id="sensBtn">Apply</button>
+            </div>
+          </label>
+          <label class="field"><span>Temperature offset (°C)</span>
+            <div class="step row">
+              <input id="tempOff" type="number" step="0.1" inputmode="decimal" placeholder="e.g. -1.5" />
+              <button id="tempOffBtn">Apply</button>
+            </div>
+          </label>
+        </details>
+      </div>
+
+      <p class="empty" id="noneMsg">Connect a keg scale to begin.</p>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+  <script>
+    const deviceSel = qs("#device");
+    const panel = qs("#panel");
+    const noneMsg = qs("#noneMsg");
+    let currentId = "";
+    let latest = {};
+
+    function post(path, body) {
+      return api("/api/kegs/" + encodeURIComponent(currentId) + path, "POST", body || {});
+    }
+
+    async function loadDevices() {
+      let ids = [];
+      try {
+        ids = (await api("/api/kegs/connected")) || [];
+      } catch (e) {
+        toast(e.message, true);
+      }
+      const prev = deviceSel.value;
+      deviceSel.innerHTML = '<option value="">Select a connected keg…</option>';
+      ids.forEach((id) => {
+        const o = ce("option");
+        o.value = id;
+        o.textContent = "Keg " + id.slice(0, 8);
+        deviceSel.appendChild(o);
+      });
+      if (ids.indexOf(prev) !== -1) deviceSel.value = prev;
+      noneMsg.hidden = ids.length > 0;
+      if (!deviceSel.value) selectDevice("");
+    }
+
+    async function selectDevice(id) {
+      currentId = id;
+      panel.hidden = !id;
+      if (!id) return;
+      try {
+        latest = (await api("/api/kegs/" + encodeURIComponent(id))) || {};
+      } catch (_) {
+        latest = {};
+      }
+      applyData(latest);
+    }
+
+    function applyData(keg) {
+      if (!keg || keg.id !== currentId) return;
+      latest = keg;
+
+      const raw = num(keg.weight_raw);
+      const litres = litresLeft(keg);
+      qs("#weight").textContent = raw != null ? raw.toFixed(2) : litres.toFixed(2);
+      qs("#wstatus").textContent = keg.is_pouring && keg.is_pouring !== "0" ? "settling…" : "live";
+
+      const empty = num(keg.empty_keg_weight);
+      qs("#emptyVal").textContent = empty != null ? "Stored empty weight: " + empty.toFixed(2) + " kg" : "";
+
+      const cap = num(keg.max_keg_volume);
+      qs("#maxVal").textContent = cap != null ? "Stored full volume: " + cap.toFixed(1) + " L" : "";
+      if (cap != null && !qs("#maxVol").value) qs("#maxVol").value = cap;
+
+      const pct = percentLeft(keg);
+      qs("#fillPct").textContent = pct.toFixed(0);
+      qs("#fillL").textContent = litres.toFixed(1);
+      qs("#fillCap").textContent = cap != null ? cap.toFixed(1) : "–";
+      qs("#fillBar").style.width = pct.toFixed(1) + "%";
+      qs("#fillFigure").classList.toggle("near-full", pct >= 95);
+    }
+
+    deviceSel.addEventListener("change", () => selectDevice(deviceSel.value));
+    qs("#refreshDevices").addEventListener("click", loadDevices);
+
+    qs("#setEmpty").addEventListener("click", async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        await post("/empty-keg");
+        setTimeout(() => post("/empty-keg-release").catch(() => {}), 600);
+        toast("Empty keg weight captured");
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        setTimeout(() => (qs("#setEmpty").disabled = false), 1200);
+      }
+    });
+
+    qs("#saveMax").addEventListener("click", async () => {
+      const v = qs("#maxVol").value.trim();
+      if (!v) return toast("Enter a volume", true);
+      try {
+        await post("/max-keg-volume", { value: v });
+        toast("Full volume saved");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+
+    qs("#nextKeg").addEventListener("click", () => {
+      qs("#maxVol").value = "";
+      qs("#calWeight").value = "";
+      toast("Ready for the next keg");
+      selectDevice(currentId);
+    });
+
+    qs("#calBtn").addEventListener("click", async () => {
+      const v = qs("#calWeight").value.trim();
+      if (!v) return toast("Enter the known mass", true);
+      try {
+        await post("/calibrate-known-weight", { value: v });
+        toast("Calibration sent");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+
+    qs("#tareBtn").addEventListener("click", async () => {
+      try {
+        await post("/tare");
+        setTimeout(() => post("/tare-release").catch(() => {}), 600);
+        toast("Tared");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+
+    qs("#sensBtn").addEventListener("click", async () => {
+      try {
+        await post("/sensitivity", { value: qs("#sens").value });
+        toast("Sensitivity applied");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+
+    qs("#tempOffBtn").addEventListener("click", async () => {
+      const v = qs("#tempOff").value.trim();
+      if (v === "") return toast("Enter an offset", true);
+      try {
+        await post("/temperature-offset", { value: v });
+        toast("Offset applied");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+
+    connectWs((msg) => {
+      if (msg.type) return;
+      applyData(msg);
+    });
+
+    loadDevices();
+    setInterval(loadDevices, 20000);
+  </script>
+</body>
+</html>
