@@ -2,6 +2,7 @@ defmodule OpenPlaatoKeg.Supervisor do
   use Supervisor
   require Logger
 
+  alias OpenPlaatoKeg.AllowList
   alias OpenPlaatoKeg.KegId
 
   def start_link do
@@ -31,17 +32,20 @@ defmodule OpenPlaatoKeg.Supervisor do
     config = OpenPlaatoKeg.tcp_listener_config()
     port = config[:port]
     allowed_ids = config[:allowed_ids] || []
+    allowed_ids_file = config[:allowed_ids_file]
 
     Logger.info("TCP keg listener starting on port #{port}...")
 
-    if allowed_ids == [] do
-      Logger.warning("KEG_ALLOWED_IDS is empty: any well-formed keg id is accepted and stored")
+    if allowed_ids == [] and allowed_ids_file == nil do
+      Logger.warning("No allow-list is set: any well-formed keg id is accepted and stored")
     end
 
     case Enum.count(allowed_ids, &(not KegId.valid?(&1))) do
       0 -> :ok
       n -> Logger.warning("#{n} entries in KEG_ALLOWED_IDS are not 32 hex characters")
     end
+
+    if allowed_ids_file, do: log_allow_list_file(allowed_ids_file)
 
     # The port faces the internet: few acceptors and a hard cap on connections
     # (num_connections is per acceptor) instead of the defaults of 100 x 16 384.
@@ -55,6 +59,22 @@ defmodule OpenPlaatoKeg.Supervisor do
      num_acceptors: 4,
      num_connections: 200,
      read_timeout: 60_000}
+  end
+
+  # The handler reads the file at every login; this is only what it holds now.
+  defp log_allow_list_file(file) do
+    case AllowList.read(file) do
+      {:ok, ids, 0} ->
+        Logger.info("Allow-list file #{file}: #{length(ids)} ids")
+
+      {:ok, ids, other} ->
+        Logger.warning(
+          "Allow-list file #{file}: #{length(ids)} ids, #{other} lines that are not 32 hex characters"
+        )
+
+      {:error, reason} ->
+        Logger.warning("Allow-list file #{file} is not readable (#{reason}): it allows no keg")
+    end
   end
 
   defp http_router_spec do

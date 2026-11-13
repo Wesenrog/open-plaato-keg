@@ -15,13 +15,6 @@ defmodule OpenPlaatoKeg.KegId do
   """
   def canonical(id), do: String.downcase(id)
 
-  @doc """
-  Whether `id` may log in. `allowed` holds canonical ids; an empty list allows
-  every id.
-  """
-  def allowed?(_id, []), do: true
-  def allowed?(id, allowed), do: canonical(id) in allowed
-
   def short(id) when is_binary(id), do: String.slice(id, 0, 6) <> "…"
   def short(id), do: inspect(id)
 end

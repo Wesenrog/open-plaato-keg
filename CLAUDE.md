@@ -54,16 +54,18 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
   reads into whole Blynk frames (`BlynkProtocol.parse/2`, frame body ≤ 1 KB). The port is
   meant to face the internet, so before login a connection may send only `internal` frames and
   the login, within 1 KB and 10 s, and gets nothing back: no ack, no `KegSocketRegistry`
-  entry, nothing stored. The login must carry a 32-hex id that is in `KEG_ALLOWED_IDS` (an
-  empty list accepts any well-formed id); anything else closes the socket with one log line.
+  entry, nothing stored. The login must carry a 32-hex id that is on the allow-list (with
+  none set, any well-formed id is accepted); anything else closes the socket with one log line.
   After login: one ack per read, frames with a non-UTF-8 body are dropped, a login with
   another id closes the connection, and a new connection logging in with the same id takes
   over from the earlier one.
 - **KegDataProcessor** — Functions run inside the handler process (no process of its own):
   decodes a logged-in keg's frames, classifies the connection as a keg, and fans out to the
   `KegData` store and the `WebSocketHandler`.
-- **KegId** (`keg_id.ex`) — Id format, allow-list match, canonical (lower-case) form, and
-  `short/1` for logs.
+- **AllowList** (`allow_list.ex`) — The ids that may log in: `KEG_ALLOWED_IDS` plus the lines
+  of the file in `KEG_ALLOWED_IDS_FILE`, which is read at every login (no restart to change
+  it). A file that is set but unreadable allows nothing.
+- **KegId** (`keg_id.ex`) — Id format, canonical (lower-case) form, and `short/1` for logs.
 - **KegCommander** (`keg_commander.ex`) — Sends commands back to connected kegs via
   `KegSocketRegistry`: tare, known-weight calibration, empty-keg weight, max keg volume,
   sensitivity, temperature offset, and pin sync.
@@ -101,7 +103,8 @@ keg socket registry, TCP listener (ThousandIsland), HTTP server (Bandit → `Htt
 ### Configuration
 
 All runtime config is in `config/runtime.exs` via environment variables: `KEG_LISTENER_PORT`,
-`HTTP_LISTENER_PORT`, `DATABASE_FILE_PATH`, `INCLUDE_UNKNOWN_DATA`, `KEG_ALLOWED_IDS`. The
+`HTTP_LISTENER_PORT`, `DATABASE_FILE_PATH`, `INCLUDE_UNKNOWN_DATA`, `KEG_ALLOWED_IDS`,
+`KEG_ALLOWED_IDS_FILE`. The
 listener's connection limits are in `supervisor.ex` and have to stay under the container's
 file-descriptor limit; the handler reads the allow-list from the config, it is not a listener
 option (those are printed when an acceptor crashes). The `OpenPlaatoKeg.Config`

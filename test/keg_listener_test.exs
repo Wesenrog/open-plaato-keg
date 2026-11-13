@@ -336,6 +336,59 @@ defmodule OpenPlaatoKeg.KegListenerTest do
       send_data(socket, login())
       assert recv(socket) == ack(1)
     end
+
+    test "includes the ids in the file, as the file is at each login" do
+      file = Path.join(System.tmp_dir!(), "allowed_ids_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(file) end)
+      File.write!(file, "# kegs\n\n#{String.upcase(@other)}  # the second one\n")
+
+      Application.put_env(:open_plaato_keg, :tcp_listener,
+        allowed_ids: [@keg],
+        allowed_ids_file: file
+      )
+
+      port = listen(allowed_ids: nil)
+      stranger = String.duplicate("a", 32)
+
+      for id <- [@keg, @other] do
+        socket = connect(port)
+        send_data(socket, login(1, id))
+        assert recv(socket) == ack(1)
+      end
+
+      refused = connect(port)
+      send_data(refused, login(1, stranger))
+      assert recv(refused) == {:error, :closed}
+
+      # No restart: the next login sees the file as it is now.
+      File.write!(file, stranger <> "\n")
+
+      socket = connect(port)
+      send_data(socket, login(1, stranger))
+      assert recv(socket) == ack(1)
+
+      removed = connect(port)
+      send_data(removed, login(1, @other))
+      assert recv(removed) == {:error, :closed}
+    end
+
+    test "allows nothing from a file that cannot be read" do
+      Application.put_env(:open_plaato_keg, :tcp_listener,
+        allowed_ids: [],
+        allowed_ids_file: "/nonexistent/allowed-ids"
+      )
+
+      port = listen(allowed_ids: nil)
+
+      log =
+        capture_log(fn ->
+          socket = connect(port)
+          send_data(socket, login())
+          assert_refused(socket)
+        end)
+
+      assert log =~ "allow-list file is not readable (enoent)"
+    end
   end
 
   describe "without an allow-list" do
