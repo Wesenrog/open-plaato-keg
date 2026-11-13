@@ -21,5 +21,7 @@ services:
       - DATABASE_FILE_PATH=/db/keg_data.bin
       - KEG_LISTENER_PORT=1234
       - HTTP_LISTENER_PORT=8085
-      # The auth tokens of your kegs, comma-separated. Empty: any keg is accepted.
+      # The auth tokens of your kegs, comma-separated, and/or a file with one
+      # token (and a name for the keg) per line. Neither set: any keg is accepted.
       - KEG_ALLOWED_IDS=
+      # - KEG_ALLOWED_IDS_FILE=/db/allowed-ids

@@ -38,6 +38,30 @@ defmodule OpenPlaatoKeg.Models.KegData do
     end)
   end
 
+  @doc """
+  Moves everything stored for the keg `old` to `new`: for a keg that gets a
+  name in the allow-list file, or another one. Refuses to overwrite a keg.
+  """
+  def rename(old, new) do
+    cond do
+      not known?(old) ->
+        {:error, :not_found}
+
+      known?(new) ->
+        {:error, :exists}
+
+      true ->
+        :keg_data
+        |> :dets.match({{old, :"$1"}, :"$2"})
+        |> Enum.each(fn [key, value] ->
+          :dets.insert(:keg_data, {{new, key}, if(key == :id, do: new, else: value)})
+          :dets.delete(:keg_data, {old, key})
+        end)
+
+        :dets.sync(:keg_data)
+    end
+  end
+
   def delete(id) do
     # Find all keys stored for this id, then delete each record individually.
     :keg_data

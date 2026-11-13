@@ -11,6 +11,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   use ThousandIsland.Handler
   require Logger
 
+  alias OpenPlaatoKeg.AllowList
   alias OpenPlaatoKeg.BlynkProtocol
   alias OpenPlaatoKeg.KegDataProcessor
   alias OpenPlaatoKeg.KegId
@@ -28,7 +29,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
     prelogin_timeout = Keyword.get(opts, :prelogin_timeout, 10_000)
 
     state = %{
-      # Normally nil: the list is then read from the application env at login.
+      # Normally nil: the allow-list is then the configured one, see AllowList.
       # The listener's options are printed when an acceptor crashes, so the
       # supervisor does not put the ids there.
       allowed_ids: Keyword.get(opts, :allowed_ids),
@@ -40,7 +41,10 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
       received: 0,
       buffer: "",
       pending: [],
+      # What the keg goes by, and the id it logged in with: the same unless
+      # the allow-list file gives the keg a name.
       keg_id: nil,
+      login_id: nil,
       processor: nil
     }
 
@@ -91,6 +95,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
          buffer: byte_size(state.buffer),
          pending: length(state.pending),
          keg_id: state.keg_id && KegId.short(state.keg_id),
+         login_id: state.login_id && KegId.short(state.login_id),
          processor: nil
      }}
   end
@@ -165,20 +170,22 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   end
 
   defp login(id, msg_id, frames, socket, state) do
-    cond do
-      not KegId.valid?(id) ->
+    case KegId.valid?(id) && AllowList.check(id, allow_list(state)) do
+      false ->
         reject("malformed id", socket, state)
 
-      not KegId.allowed?(id, state.allowed_ids || configured_ids()) ->
-        reject("id #{KegId.short(id)} is not in KEG_ALLOWED_IDS", socket, state)
+      {:error, reason} ->
+        reject(reason, socket, state)
 
-      true ->
+      {:ok, keg} ->
         # One keg per token, whatever case it is sent in.
-        register_keg(KegId.canonical(id), msg_id, frames, socket, state)
+        state = %{state | login_id: KegId.canonical(id)}
+        register_keg(keg, msg_id, frames, socket, state)
     end
   end
 
-  defp configured_ids, do: OpenPlaatoKeg.tcp_listener_config()[:allowed_ids] || []
+  defp allow_list(%{allowed_ids: nil}), do: OpenPlaatoKeg.tcp_listener_config()
+  defp allow_list(%{allowed_ids: ids}), do: [allowed_ids: ids]
 
   defp register_keg(id, msg_id, frames, socket, state) do
     case register(id, socket, @takeover_attempts) do
@@ -197,7 +204,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
 
   # A connection is one keg for as long as it lasts.
   defp process(frames, ack_id, socket, state) do
-    if Enum.any?(frames, &other_login?(&1, state.keg_id)) do
+    if Enum.any?(frames, &other_login?(&1, state.login_id)) do
       reject("second login with another id", socket, state)
     else
       if ack_id, do: ack(socket, ack_id)
@@ -211,8 +218,8 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
     end
   end
 
-  defp other_login?({cmd, _msg_id, _length, id}, keg_id) do
-    cmd in @login_cmds and not (KegId.valid?(id) and KegId.canonical(id) == keg_id)
+  defp other_login?({cmd, _msg_id, _length, id}, login_id) do
+    cmd in @login_cmds and not (KegId.valid?(id) and KegId.canonical(id) == login_id)
   end
 
   # A value that is not valid UTF-8 cannot be served as JSON, and one such

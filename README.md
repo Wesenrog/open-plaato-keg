@@ -107,8 +107,10 @@ services:
       - DATABASE_FILE_PATH=/db/keg_data.bin
       - KEG_LISTENER_PORT=1234
       - HTTP_LISTENER_PORT=8085
-      # The auth tokens of your kegs, comma-separated. Empty: any keg is accepted.
+      # The auth tokens of your kegs, comma-separated, and/or a file with one
+      # token (and a name for the keg) per line. Neither set: any keg is accepted.
       - KEG_ALLOWED_IDS=
+      # - KEG_ALLOWED_IDS_FILE=/db/allowed-ids
 ```
 
 ### Elixir release
@@ -123,17 +125,45 @@ directly. Use [asdf](https://asdf-vm.com) with the checked-in [.tool-versions](.
 |---|---|---|---|
 | `KEG_LISTENER_PORT` | Optional | `1234` | TCP port for Plaato Keg connections |
 | `HTTP_LISTENER_PORT` | Optional | `8085` | HTTP port for the web UI and API |
-| `KEG_ALLOWED_IDS` | Optional | empty | Comma-separated auth tokens of the kegs that may connect. Empty accepts any well-formed token |
+| `KEG_ALLOWED_IDS` | Optional | empty | Comma-separated auth tokens of the kegs that may connect |
+| `KEG_ALLOWED_IDS_FILE` | Optional | unset | File with the auth tokens of the kegs that may connect, one per line, each optionally followed by a name for the keg (`#` comments allowed). Read at every login, so edits need no restart. With neither this nor `KEG_ALLOWED_IDS` set, any well-formed token is accepted |
 | `DATABASE_FILE_PATH` | Optional | `priv/db/keg_data.bin` | Path to the `:dets` database file |
 | `INCLUDE_UNKNOWN_DATA` | Optional | `false` | Also expose virtual pins that are not mapped to a known property |
 
 ### Exposing the keg port
 
 The Plaato firmware has no encryption and no login beyond its auth token, so a keg outside
-your network needs `KEG_LISTENER_PORT` open to the internet. Set `KEG_ALLOWED_IDS` to the
-tokens you gave your kegs when you do: a connection then gets no answer, and nothing is
-stored, until it has logged in with one of them. Without the list, every connection that
-sends a 32-character hex token and one reading becomes a keg in the database.
+your network needs `KEG_LISTENER_PORT` open to the internet. List the tokens you gave your
+kegs when you do, in `KEG_ALLOWED_IDS` or in the file `KEG_ALLOWED_IDS_FILE` names: a
+connection then gets no answer, and nothing is stored, until it has logged in with one of
+them. Without a list, every connection that sends a 32-character hex token and one reading
+becomes a keg in the database.
+
+The file is read at every login: add a keg by adding its token, no restart needed. Removing a
+token keeps that keg out from its next connection on. Mount the directory the file is in
+rather than the file itself, or an editor that replaces the file leaves the container with
+the old one. A file that is set but missing or unreadable lets no keg in.
+
+A line can give the keg a name (letters, digits, `-` and `_`, at most 32) after its token:
+
+```
+# token                            keg
+00000000000000000000000000000001   left-tap
+00000000000000000000000000000002   right-tap
+```
+
+A keg with a name is stored and shown under the name, not the token: the token stays out of
+the web UI and the API, and giving the keg a new token is a change of that line — label,
+calibration and readings stay with the keg. Two lines with the same name are the same keg,
+which lets the old token work while the keg is being moved to the new one.
+
+A keg that is already stored under its token keeps that data when it gets a name only if it
+is moved once, with the server running:
+
+```shell
+docker exec open-plaato-keg ./bin/open_plaato_keg rpc \
+  'OpenPlaatoKeg.Models.KegData.rename("00000000000000000000000000000001", "left-tap")'
+```
 
 The token travels in clear text, so the list keeps out scanners, not someone who can read
 your keg's traffic. The web UI and API on `HTTP_LISTENER_PORT` have no login at all: keep

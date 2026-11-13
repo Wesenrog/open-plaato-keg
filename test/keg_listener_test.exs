@@ -336,6 +336,101 @@ defmodule OpenPlaatoKeg.KegListenerTest do
       send_data(socket, login())
       assert recv(socket) == ack(1)
     end
+
+    test "includes the ids in the file, as the file is at each login" do
+      file = Path.join(System.tmp_dir!(), "allowed_ids_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(file) end)
+      File.write!(file, "# kegs\n\n#{String.upcase(@other)}  # the second one\n")
+
+      Application.put_env(:open_plaato_keg, :tcp_listener,
+        allowed_ids: [@keg],
+        allowed_ids_file: file
+      )
+
+      port = listen(allowed_ids: nil)
+      stranger = String.duplicate("a", 32)
+
+      for id <- [@keg, @other] do
+        socket = connect(port)
+        send_data(socket, login(1, id))
+        assert recv(socket) == ack(1)
+      end
+
+      refused = connect(port)
+      send_data(refused, login(1, stranger))
+      assert recv(refused) == {:error, :closed}
+
+      # No restart: the next login sees the file as it is now.
+      File.write!(file, stranger <> "\n")
+
+      socket = connect(port)
+      send_data(socket, login(1, stranger))
+      assert recv(socket) == ack(1)
+
+      removed = connect(port)
+      send_data(removed, login(1, @other))
+      assert recv(removed) == {:error, :closed}
+    end
+
+    test "a keg with a name in the file goes by it, and keeps it under another id" do
+      file = Path.join(System.tmp_dir!(), "allowed_ids_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(file) end)
+      File.write!(file, "#{@keg} left-tap\n")
+
+      Application.put_env(:open_plaato_keg, :tcp_listener,
+        allowed_ids: [],
+        allowed_ids_file: file
+      )
+
+      port = listen(allowed_ids: nil)
+
+      first = connect(port)
+      send_data(first, login() <> pin(2, "51", "12.5"))
+      assert recv(first) == ack(1)
+
+      eventually(fn -> stored(:amount_left, "left-tap") == "12.5" end)
+      assert KegCommander.connected_kegs() == ["left-tap"]
+      assert KegData.devices() == ["left-tap"]
+      refute inspect(KegData.all()) =~ @keg
+
+      # Its own login again is fine; the keg's name is not a login.
+      send_data(first, login(3))
+      assert recv(first) == ack(3)
+
+      # The keg gets a new id: the same keg, taking over from its old connection.
+      File.write!(file, "#{@other} left-tap\n")
+
+      second = connect(port)
+      send_data(second, login(1, @other) <> pin(2, "51", "11.0"))
+      assert recv(second) == ack(1)
+      assert recv(first) == {:error, :closed}
+
+      eventually(fn -> stored(:amount_left, "left-tap") == "11.0" end)
+      eventually(fn -> KegCommander.connected_kegs() == ["left-tap"] end)
+      assert KegData.devices() == ["left-tap"]
+
+      old = connect(port)
+      send_data(old, login())
+      assert recv(old) == {:error, :closed}
+    end
+
+    test "allows nothing from a file that cannot be read" do
+      Application.put_env(:open_plaato_keg, :tcp_listener,
+        allowed_ids: [],
+        allowed_ids_file: "/nonexistent/allowed-ids"
+      )
+
+      port = listen(allowed_ids: nil)
+
+      log =
+        capture_log(fn ->
+          socket = connect(port)
+          send_data(socket, login())
+          assert_refused(socket)
+        end)
+
+      assert log =~ "allow-list file is not readable (enoent)"
+    end
   end
 
   describe "without an allow-list" do
