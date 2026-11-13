@@ -64,7 +64,9 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
   `KegData` store and the `WebSocketHandler`.
 - **AllowList** (`allow_list.ex`) — The ids that may log in: `KEG_ALLOWED_IDS` plus the lines
   of the file in `KEG_ALLOWED_IDS_FILE`, which is read at every login (no restart to change
-  it). A file that is set but unreadable allows nothing.
+  it). A file that is set but unreadable allows nothing. A line may name the keg (`<id>
+  <name>`): the keg is then registered and stored under the name, so its id can change
+  (`KegData.rename/2` moves a keg already stored under its id).
 - **KegId** (`keg_id.ex`) — Id format, canonical (lower-case) form, and `short/1` for logs.
 - **KegCommander** (`keg_commander.ex`) — Sends commands back to connected kegs via
   `KegSocketRegistry`: tare, known-weight calibration, empty-keg weight, max keg volume,
@@ -119,8 +121,10 @@ cases. The `assert_value` library is available for snapshot-style assertions.
 
 ## Key Conventions
 
-- Keg IDs are 32-character hex strings (the Blynk auth token), stored lower-case. The id is
+- Keg IDs are 32-character hex strings (the Blynk auth token), lower-cased at login. The id is
   all a keg has to identify itself: logs carry `KegId.short/1`, never the id.
+- The key a keg has in the store, the registry and the API (`:id`) is its id, or its name
+  from the allow-list file. Nothing may assume that key is 32 hex characters.
 - Keg properties flow as keyword lists through the decode pipeline.
 - Locally-stored, user-defined fields are prefixed with `my_` (`my_label`, `my_sort_order`,
   `my_display_mode`) and never sent to hardware.

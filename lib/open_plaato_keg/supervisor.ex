@@ -64,12 +64,12 @@ defmodule OpenPlaatoKeg.Supervisor do
   # The handler reads the file at every login; this is only what it holds now.
   defp log_allow_list_file(file) do
     case AllowList.read(file) do
-      {:ok, ids, 0} ->
-        Logger.info("Allow-list file #{file}: #{length(ids)} ids")
+      {:ok, entries, 0} ->
+        Logger.info("Allow-list file #{file}: #{length(entries)} ids")
 
-      {:ok, ids, other} ->
+      {:ok, entries, other} ->
         Logger.warning(
-          "Allow-list file #{file}: #{length(ids)} ids, #{other} lines that are not 32 hex characters"
+          "Allow-list file #{file}: #{length(entries)} ids, #{other} lines that are not an id and a name"
         )
 
       {:error, reason} ->

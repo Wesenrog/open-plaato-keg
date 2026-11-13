@@ -41,7 +41,10 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
       received: 0,
       buffer: "",
       pending: [],
+      # What the keg goes by, and the id it logged in with: the same unless
+      # the allow-list file gives the keg a name.
       keg_id: nil,
+      login_id: nil,
       processor: nil
     }
 
@@ -92,6 +95,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
          buffer: byte_size(state.buffer),
          pending: length(state.pending),
          keg_id: state.keg_id && KegId.short(state.keg_id),
+         login_id: state.login_id && KegId.short(state.login_id),
          processor: nil
      }}
   end
@@ -173,9 +177,10 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
       {:error, reason} ->
         reject(reason, socket, state)
 
-      :ok ->
+      {:ok, keg} ->
         # One keg per token, whatever case it is sent in.
-        register_keg(KegId.canonical(id), msg_id, frames, socket, state)
+        state = %{state | login_id: KegId.canonical(id)}
+        register_keg(keg, msg_id, frames, socket, state)
     end
   end
 
@@ -199,7 +204,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
 
   # A connection is one keg for as long as it lasts.
   defp process(frames, ack_id, socket, state) do
-    if Enum.any?(frames, &other_login?(&1, state.keg_id)) do
+    if Enum.any?(frames, &other_login?(&1, state.login_id)) do
       reject("second login with another id", socket, state)
     else
       if ack_id, do: ack(socket, ack_id)
@@ -213,8 +218,8 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
     end
   end
 
-  defp other_login?({cmd, _msg_id, _length, id}, keg_id) do
-    cmd in @login_cmds and not (KegId.valid?(id) and KegId.canonical(id) == keg_id)
+  defp other_login?({cmd, _msg_id, _length, id}, login_id) do
+    cmd in @login_cmds and not (KegId.valid?(id) and KegId.canonical(id) == login_id)
   end
 
   # A value that is not valid UTF-8 cannot be served as JSON, and one such

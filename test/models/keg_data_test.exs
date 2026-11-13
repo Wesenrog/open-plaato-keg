@@ -43,6 +43,27 @@ defmodule OpenPlaatoKeg.Models.KegDataTest do
     assert KegData.get("keg-a")[:beer_left_unit] == "kg"
   end
 
+  test "rename moves a keg, with its id, to another name" do
+    KegData.publish("keg-a", id: "keg-a", amount_left: "12.3", my_label: "Left")
+    KegData.publish("keg-b", id: "keg-b", amount_left: "0.0")
+
+    assert KegData.rename("keg-a", "left") == :ok
+
+    assert Enum.sort(KegData.devices()) == ["keg-b", "left"]
+    assert KegData.get("left")[:my_label] == "Left"
+    assert KegData.get("left")[:id] == "left"
+    refute KegData.known?("keg-a")
+  end
+
+  test "rename does not overwrite a keg, or move one that is not there" do
+    KegData.publish("keg-a", id: "keg-a", amount_left: "12.3")
+    KegData.publish("keg-b", id: "keg-b", amount_left: "0.0")
+
+    assert KegData.rename("keg-a", "keg-b") == {:error, :exists}
+    assert KegData.rename("keg-c", "left") == {:error, :not_found}
+    assert KegData.get("keg-b")[:amount_left] == "0.0"
+  end
+
   test "all returns one map per device" do
     KegData.publish("keg-a", id: "keg-a", amount_left: "12.3")
 
