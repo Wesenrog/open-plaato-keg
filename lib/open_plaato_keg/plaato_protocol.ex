@@ -9,7 +9,7 @@ defmodule OpenPlaatoKeg.PlaatoProtocol do
     internal_props =
       message
       |> String.split("\0", trim: true)
-      |> Enum.chunk_every(2)
+      |> Enum.chunk_every(2, 2, :discard)
       |> Enum.map(fn [key, value] -> {key, value} end)
       |> Enum.into(%{})
 

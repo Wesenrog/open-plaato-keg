@@ -68,25 +68,32 @@ defmodule OpenPlaatoKeg.BlynkProtocol do
   @reverse_blynk_cmds Enum.into(@blynk_cmds, %{}, fn {k, v} -> {v, k} end)
   @reverse_blynk_statuses Enum.into(@blynk_statuses, %{}, fn {k, v} -> {v, k} end)
 
-  def decode(<<cmd::8, msg_id::16, length::16, body::binary>>, result \\ []) do
-    cmd_atom = Map.get(@blynk_cmds, cmd, :unknown_cmd)
+  @doc """
+  Splits a receive buffer into the complete frames it starts with.
 
-    case cmd_atom do
-      :response ->
-        status_atom = Map.get(@blynk_statuses, length, :unknown_status)
-        [{:response, msg_id, status_atom, body}]
+  Returns `{:ok, frames, rest}`, where `rest` is the incomplete tail to put in
+  front of the next read, or `{:error, :frame_too_large}` when a header
+  announces a body over `max_body` bytes. `rest` is thereby never longer than
+  a header plus `max_body`. A response frame is a bare header whose length
+  field is the status.
+  """
+  def parse(buffer, max_body \\ 1024), do: do_parse(buffer, max_body, [])
 
-      cmd_atom ->
-        <<current_body::binary-size(length), rest::binary>> = body
-        new_result = result ++ [{cmd_atom, msg_id, length, current_body}]
-
-        if byte_size(rest) == 0 do
-          new_result
-        else
-          decode(rest, new_result)
-        end
-    end
+  @doc """
+  Decodes a binary known to hold whole frames (recorded sessions, tests). The
+  listener uses `parse/2`.
+  """
+  def decode(data) do
+    {:ok, frames, _rest} = parse(data, 65_535)
+    frames
   end
+
+  @doc """
+  The command of the frame a buffer starts with, known from its first byte;
+  `nil` for an empty buffer.
+  """
+  def next_command(<<cmd::8, _::binary>>), do: Map.get(@blynk_cmds, cmd, :unknown_cmd)
+  def next_command(<<>>), do: nil
 
   def encode_command(cmd_atom, msg_id, body) when is_atom(cmd_atom) do
     cmd = Map.get(@reverse_blynk_cmds, cmd_atom, 0)
@@ -110,4 +117,25 @@ defmodule OpenPlaatoKeg.BlynkProtocol do
 
     <<0::8, num::16, status::16, body::binary>>
   end
+
+  defp do_parse(<<0::8, msg_id::16, status::16, rest::binary>>, max_body, frames) do
+    status_atom = Map.get(@blynk_statuses, status, :unknown_status)
+    do_parse(rest, max_body, [{:response, msg_id, status_atom, ""} | frames])
+  end
+
+  defp do_parse(<<_cmd::8, _msg_id::16, length::16, _::binary>>, max_body, _frames)
+       when length > max_body do
+    {:error, :frame_too_large}
+  end
+
+  defp do_parse(
+         <<cmd::8, msg_id::16, length::16, body::binary-size(length), rest::binary>>,
+         max_body,
+         frames
+       ) do
+    cmd_atom = Map.get(@blynk_cmds, cmd, :unknown_cmd)
+    do_parse(rest, max_body, [{cmd_atom, msg_id, length, body} | frames])
+  end
+
+  defp do_parse(rest, _max_body, frames), do: {:ok, Enum.reverse(frames), rest}
 end

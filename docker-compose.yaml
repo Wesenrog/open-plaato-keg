@@ -6,6 +6,13 @@ services:
       - 1234:1234
       - 8085:8085
     restart: always
+    mem_limit: 128m
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       # Persist keg data across container updates.
       # Unraid: change host path to /mnt/user/appdata/open-plaato-keg:/db
@@ -14,3 +21,5 @@ services:
       - DATABASE_FILE_PATH=/db/keg_data.bin
       - KEG_LISTENER_PORT=1234
       - HTTP_LISTENER_PORT=8085
+      # The auth tokens of your kegs, comma-separated. Empty: any keg is accepted.
+      - KEG_ALLOWED_IDS=

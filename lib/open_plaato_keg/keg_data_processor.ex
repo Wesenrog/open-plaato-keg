@@ -1,54 +1,48 @@
 defmodule OpenPlaatoKeg.KegDataProcessor do
-  use GenServer
+  @moduledoc """
+  Per-connection state and processing of a logged-in keg's Blynk frames.
+
+  Runs inside the connection handler, so a slow store slows that keg's socket
+  instead of filling a mailbox. The id is the one the connection logged in
+  with; a frame cannot change it.
+  """
   require Logger
 
-  alias OpenPlaatoKeg.BlynkProtocol
+  alias OpenPlaatoKeg.KegId
   alias OpenPlaatoKeg.Models.KegData
   alias OpenPlaatoKeg.PlaatoData
   alias OpenPlaatoKeg.PlaatoProtocol
 
-  # IMPORTANT:
-  # This GenServer must be per-connection, NOT globally named.
-  # Otherwise the 2nd keg connection will fail with {:already_started, pid}.
-  def start_link(init_arg \\ %{}) do
-    GenServer.start_link(__MODULE__, init_arg)
-  end
+  def new(id), do: %{id: id}
 
-  def init(state) do
-    {:ok, state}
-  end
-
-  def handle_cast({:keg_data, data}, state) do
-    data
+  def process_frames(frames, state) do
+    frames
     |> decode()
     |> process(state)
+  rescue
+    # Bad input from one keg must not take its connection down with a crash
+    # report, which would carry the id and the payload.
+    exception ->
+      Logger.warning(
+        "Dropped undecodable data from keg #{KegId.short(state.id)}: #{inspect(exception.__struct__)}"
+      )
+
+      state
   end
 
-  defp process([], state), do: {:noreply, state}
+  defp process([], state), do: state
 
-  defp process(data, state) do
-    # The login packet (get_shared_dash) may arrive in the same TCP frame as
-    # other commands, so we always extract the id from any decoded list rather
-    # than relying on a single-element [id: id] pattern.
-    state =
-      case Keyword.fetch(data, :id) do
-        {:ok, id} -> Map.put(state, :id, id)
-        :error -> state
-      end
-
+  defp process(payload, state) do
     # Classify the connection as a keg once we see keg-only pins or keg
     # firmware metadata, and cache it so later packets stay classified even
     # when they only carry generic fields.
     state =
       cond do
         state[:device_type] != nil -> state
-        internal_keg_data?(data) -> Map.put(state, :device_type, :keg)
-        keg_data?(data) -> Map.put(state, :device_type, :keg)
+        internal_keg_data?(payload) -> Map.put(state, :device_type, :keg)
+        keg_data?(payload) -> Map.put(state, :device_type, :keg)
         true -> state
       end
-
-    # Strip the id before routing — it is already in state.
-    payload = Keyword.delete(data, :id)
 
     # Internal metadata can arrive before we have enough signals to classify
     # the connection as a keg. Hold onto that packet and publish it once the
@@ -57,10 +51,10 @@ defmodule OpenPlaatoKeg.KegDataProcessor do
 
     cond do
       payload == [] or only_pending_internal?(payload, state) ->
-        {:noreply, state}
+        state
 
       true ->
-        Logger.debug("Decoded keg data", data: inspect(payload, limit: :infinity))
+        Logger.debug("Decoded keg data", data: inspect(payload))
         process_keg(payload, state)
     end
   end
@@ -105,7 +99,10 @@ defmodule OpenPlaatoKeg.KegDataProcessor do
             data
 
           {v, _} ->
-            Logger.warning("Ignoring out-of-range last_pour=#{v} #{unit} for keg #{id}")
+            Logger.warning(
+              "Ignoring out-of-range last_pour=#{v} #{unit} for keg #{KegId.short(id)}"
+            )
+
             Keyword.delete(data, :last_pour)
 
           :error ->
@@ -141,12 +138,9 @@ defmodule OpenPlaatoKeg.KegDataProcessor do
       {&OpenPlaatoKeg.WebSocketHandler.publish/2, fn -> confirmed_keg? end}
     ])
 
-    state =
-      if confirmed_keg?,
-        do: Map.delete(state, :pending_internal),
-        else: state
-
-    {:noreply, state}
+    if confirmed_keg?,
+      do: Map.delete(state, :pending_internal),
+      else: state
   end
 
   defp cache_pending_internal(payload, %{device_type: nil} = state) do
@@ -164,16 +158,12 @@ defmodule OpenPlaatoKeg.KegDataProcessor do
 
   defp only_pending_internal?(_payload, _state), do: false
 
-  defp decode(data) do
-    data
-    |> BlynkProtocol.decode()
+  # The login frame decodes to an `:id` entry; the handler has dealt with it.
+  defp decode(frames) do
+    frames
     |> PlaatoProtocol.decode()
     |> PlaatoData.decode()
-  end
-
-  defp publish(nil = _id, data, _publishers) do
-    Logger.warning("No id found for decoded data", data: inspect(data))
-    :skip
+    |> Enum.reject(&match?({:id, _}, &1))
   end
 
   defp publish(id, data, publishers) do

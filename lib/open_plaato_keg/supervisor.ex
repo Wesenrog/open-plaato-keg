@@ -2,6 +2,8 @@ defmodule OpenPlaatoKeg.Supervisor do
   use Supervisor
   require Logger
 
+  alias OpenPlaatoKeg.KegId
+
   def start_link do
     Supervisor.start_link(__MODULE__, :ok, name: __MODULE__)
   end
@@ -26,11 +28,33 @@ defmodule OpenPlaatoKeg.Supervisor do
   end
 
   defp tcp_listener_spec do
-    port = OpenPlaatoKeg.tcp_listener_config()[:port]
+    config = OpenPlaatoKeg.tcp_listener_config()
+    port = config[:port]
+    allowed_ids = config[:allowed_ids] || []
 
     Logger.info("TCP keg listener starting on port #{port}...")
 
-    {ThousandIsland, port: port, handler_module: OpenPlaatoKeg.KegConnectionHandler}
+    if allowed_ids == [] do
+      Logger.warning("KEG_ALLOWED_IDS is empty: any well-formed keg id is accepted and stored")
+    end
+
+    case Enum.count(allowed_ids, &(not KegId.valid?(&1))) do
+      0 -> :ok
+      n -> Logger.warning("#{n} entries in KEG_ALLOWED_IDS are not 32 hex characters")
+    end
+
+    # The port faces the internet: few acceptors and a hard cap on connections
+    # (num_connections is per acceptor) instead of the defaults of 100 x 16 384.
+    # The cap has to stay under the file-descriptor limit, 1024 in a container:
+    # an acceptor that runs out of descriptors crashes and takes its
+    # connections with it. The handler reads the allow-list from the config
+    # itself; these options are printed when an acceptor crashes.
+    {ThousandIsland,
+     port: port,
+     handler_module: OpenPlaatoKeg.KegConnectionHandler,
+     num_acceptors: 4,
+     num_connections: 200,
+     read_timeout: 60_000}
   end
 
   defp http_router_spec do
