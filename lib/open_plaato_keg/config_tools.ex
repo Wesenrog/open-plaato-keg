@@ -22,6 +22,13 @@ defmodule OpenPlaatoKeg.Config do
   def convert("true", :boolean), do: true
   def convert(_, :boolean), do: false
 
+  def convert(value, :csv) do
+    value
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
   def convert(value, :key_value_csv) do
     value
     |> String.split(",", trim: true)

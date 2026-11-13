@@ -93,6 +93,13 @@ services:
       - 1234:1234
       - 8085:8085
     restart: always
+    mem_limit: 128m
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       # Persist the database across container updates.
       - ./data:/db
@@ -100,6 +107,8 @@ services:
       - DATABASE_FILE_PATH=/db/keg_data.bin
       - KEG_LISTENER_PORT=1234
       - HTTP_LISTENER_PORT=8085
+      # The auth tokens of your kegs, comma-separated. Empty: any keg is accepted.
+      - KEG_ALLOWED_IDS=
 ```
 
 ### Elixir release
@@ -114,8 +123,21 @@ directly. Use [asdf](https://asdf-vm.com) with the checked-in [.tool-versions](.
 |---|---|---|---|
 | `KEG_LISTENER_PORT` | Optional | `1234` | TCP port for Plaato Keg connections |
 | `HTTP_LISTENER_PORT` | Optional | `8085` | HTTP port for the web UI and API |
+| `KEG_ALLOWED_IDS` | Optional | empty | Comma-separated auth tokens of the kegs that may connect. Empty accepts any well-formed token |
 | `DATABASE_FILE_PATH` | Optional | `priv/db/keg_data.bin` | Path to the `:dets` database file |
 | `INCLUDE_UNKNOWN_DATA` | Optional | `false` | Also expose virtual pins that are not mapped to a known property |
+
+### Exposing the keg port
+
+The Plaato firmware has no encryption and no login beyond its auth token, so a keg outside
+your network needs `KEG_LISTENER_PORT` open to the internet. Set `KEG_ALLOWED_IDS` to the
+tokens you gave your kegs when you do: a connection then gets no answer, and nothing is
+stored, until it has logged in with one of them. Without the list, every connection that
+sends a 32-character hex token and one reading becomes a keg in the database.
+
+The token travels in clear text, so the list keeps out scanners, not someone who can read
+your keg's traffic. The web UI and API on `HTTP_LISTENER_PORT` have no login at all: keep
+that port on your own network or behind a reverse proxy that has one.
 
 ## Web UI
 

@@ -30,6 +30,8 @@ defmodule OpenPlaatoKeg.Models.KegData do
     |> List.flatten()
   end
 
+  def known?(id), do: :dets.lookup(:keg_data, {id, :id}) != []
+
   def publish(id, data) do
     Enum.each(data, fn {key, value} ->
       :dets.insert(:keg_data, {{id, key}, value})

@@ -2,6 +2,7 @@ defmodule OpenPlaatoKeg.HttpRouter do
   use Plug.Router
   require Logger
   alias OpenPlaatoKeg.KegCommander
+  alias OpenPlaatoKeg.KegId
   alias OpenPlaatoKeg.Models.KegData
   alias OpenPlaatoKeg.WebSocketHandler
 
@@ -210,7 +211,7 @@ defmodule OpenPlaatoKeg.HttpRouter do
     KegCommander.disconnect(keg_id)
     KegData.delete(keg_id)
     WebSocketHandler.broadcast_keg_removed(keg_id)
-    Logger.info("Deleted keg #{keg_id} from DETS", [])
+    Logger.info("Deleted keg #{KegId.short(keg_id)} from DETS", [])
     json_response(conn, 200, %{status: "ok", deleted: keg_id})
   end
 

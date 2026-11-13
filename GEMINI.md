@@ -35,4 +35,5 @@ mix release              # build a release
 ## Configuration
 
 Environment variables (via `config/runtime.exs`): `KEG_LISTENER_PORT` (default 1234),
-`HTTP_LISTENER_PORT` (default 8085), `DATABASE_FILE_PATH`, `INCLUDE_UNKNOWN_DATA`.
+`HTTP_LISTENER_PORT` (default 8085), `DATABASE_FILE_PATH`, `INCLUDE_UNKNOWN_DATA`,
+`KEG_ALLOWED_IDS` (comma-separated keg ids that may connect; empty accepts any).

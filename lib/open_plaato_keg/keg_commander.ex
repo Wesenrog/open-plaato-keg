@@ -5,6 +5,7 @@ defmodule OpenPlaatoKeg.KegCommander do
   """
   require Logger
   alias OpenPlaatoKeg.BlynkProtocol
+  alias OpenPlaatoKeg.KegId
 
   # Plaato virtual pin mappings (see OpenPlaatoKeg.PlaatoData)
   @pins %{
@@ -23,7 +24,7 @@ defmodule OpenPlaatoKeg.KegCommander do
   def disconnect(keg_id) do
     case lookup_socket(keg_id) do
       {:ok, socket} ->
-        Logger.info("Disconnecting keg #{keg_id} by request", [])
+        Logger.info("Disconnecting keg #{KegId.short(keg_id)} by request", [])
         ThousandIsland.Socket.close(socket)
         :ok
 
@@ -147,11 +148,11 @@ defmodule OpenPlaatoKeg.KegCommander do
     case lookup_socket(keg_id) do
       {:ok, socket} ->
         encoded = encode_hardware_sync(pins)
-        Logger.info("Requesting sync for keg #{keg_id}, pins: #{inspect(pins)}")
+        Logger.info("Requesting sync for keg #{KegId.short(keg_id)}, pins: #{inspect(pins)}")
         ThousandIsland.Socket.send(socket, encoded)
 
       {:error, reason} ->
-        Logger.warning("Failed to sync keg #{keg_id}: #{inspect(reason)}")
+        Logger.warning("Failed to sync keg #{KegId.short(keg_id)}: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -180,11 +181,11 @@ defmodule OpenPlaatoKeg.KegCommander do
   defp do_send(keg_id, encoded) do
     case lookup_socket(keg_id) do
       {:ok, socket} ->
-        Logger.info("Sending command to keg #{keg_id}")
+        Logger.info("Sending command to keg #{KegId.short(keg_id)}")
         ThousandIsland.Socket.send(socket, encoded)
 
       {:error, reason} ->
-        Logger.warning("Failed to send command to keg #{keg_id}: #{inspect(reason)}")
+        Logger.warning("Failed to send command to keg #{KegId.short(keg_id)}: #{inspect(reason)}")
         {:error, reason}
     end
   end

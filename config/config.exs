@@ -7,7 +7,7 @@ config :logger,
   compile_time_purge_matching: [
     [level_lower_than: if(config_env() == :prod, do: :info, else: :debug)]
   ],
-  truncate: :infinity
+  truncate: 4096
 
 config :logger, :console,
   metadata: [
