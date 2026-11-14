@@ -32,6 +32,7 @@ defmodule OpenPlaatoKeg.KegListenerTest do
     # is still there when the handlers see the test's sockets close.
     start_supervised!({Agent, fn -> {:ok, _} = :dets.open_file(:keg_data, file: file) end})
     start_supervised!({Registry, keys: :unique, name: OpenPlaatoKeg.KegSocketRegistry})
+    start_supervised!({Registry, keys: :duplicate, name: OpenPlaatoKeg.KegPeerRegistry})
 
     start_supervised!(
       {Registry, keys: :duplicate, name: OpenPlaatoKeg.WebSocketConnectionRegistry}
@@ -196,6 +197,60 @@ defmodule OpenPlaatoKeg.KegListenerTest do
       assert recv(socket) == ack(2)
 
       eventually(fn -> stored(:internal) == %{"ver" => "2.0", "dev" => "ESP32"} end)
+    end
+  end
+
+  describe "connections from one address" do
+    test "are two per scale on the allow-list; the next one is closed unanswered" do
+      port = listen(allowed_ids: [@keg, @other], prelogin_timeout: 2_000)
+      held = for _ <- 1..4, do: connect(port)
+
+      log =
+        capture_log(fn ->
+          extra = connect(port)
+          send_data(extra, login())
+          assert recv(extra) == {:error, :closed}
+        end)
+
+      assert log =~ "has 4 connections open"
+
+      # The four are untouched: one of them logs in.
+      send_data(hd(held), login())
+      assert recv(hd(held)) == ack(1)
+    end
+
+    test "are counted as they are now: a closed one makes room" do
+      port = listen(allowed_ids: [@keg])
+      [first, _second] = for _ <- 1..2, do: connect(port)
+
+      refused = connect(port)
+      assert recv(refused) == {:error, :closed}
+
+      :gen_tcp.close(first)
+
+      eventually(fn ->
+        socket = connect(port)
+        send_data(socket, login())
+        recv(socket, 200) == ack(1)
+      end)
+    end
+
+    test "a scale can log in again while its earlier connection is still open" do
+      port = listen(allowed_ids: [@keg])
+      first = connect(port)
+      send_data(first, login())
+      assert recv(first) == ack(1)
+
+      second = connect(port)
+      send_data(second, login(7))
+      assert recv(second) == ack(7)
+    end
+
+    test "are sixteen when any id may log in" do
+      port = listen(allowed_ids: [], prelogin_timeout: 2_000)
+      _held = for _ <- 1..16, do: connect(port)
+
+      assert recv(connect(port)) == {:error, :closed}
     end
   end
 

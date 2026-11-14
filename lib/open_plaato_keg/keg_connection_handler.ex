@@ -7,6 +7,11 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   entry, nothing stored. Before that it may send only `internal` frames and the
   login itself, within `:prelogin_bytes` and within `:prelogin_timeout` of the
   accept. Anything else closes the socket with one log line.
+
+  One address may hold twice as many connections as there are scales on the
+  allow-list: every scale, and a reconnect of each while its earlier
+  connection is still open. Without it one machine could hold every
+  connection the listener has, for free, and keep the scales out.
   """
   use ThousandIsland.Handler
   require Logger
@@ -25,7 +30,12 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   @takeover_wait_ms 1_000
   @takeover_attempts 3
 
-  def handle_connection(_socket, opts) do
+  # Connections per address when any id may log in: there is no number of
+  # scales to go by.
+  @any_id_per_address 16
+  @over_limit_log_ms 10_000
+
+  def handle_connection(socket, opts) do
     prelogin_timeout = Keyword.get(opts, :prelogin_timeout, 10_000)
 
     state = %{
@@ -48,7 +58,10 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
       processor: nil
     }
 
-    {:continue, state, prelogin_timeout}
+    case over_address_limit(socket, state, opts) do
+      false -> {:continue, state, prelogin_timeout}
+      true -> {:close, state}
+    end
   end
 
   def handle_data(data, socket, state) do
@@ -107,6 +120,62 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   end
 
   defp redact_message(message), do: message
+
+  # The registry holds one entry per open connection, under its address, and
+  # drops it when the handler exits. The allow-list is read only for an
+  # address that already has more than the two connections one scale is good for.
+  defp over_address_limit(socket, state, opts) do
+    address = peer_address(socket)
+    {:ok, _} = Registry.register(OpenPlaatoKeg.KegPeerRegistry, address, nil)
+    open = OpenPlaatoKeg.KegPeerRegistry |> Registry.lookup(address) |> length()
+
+    if open > 2 do
+      limit = Keyword.get_lazy(opts, :max_per_address, fn -> per_address_limit(state) end)
+
+      if open > limit, do: log_over_limit(socket, limit)
+
+      open > limit
+    else
+      false
+    end
+  end
+
+  defp per_address_limit(state) do
+    case AllowList.scales(allow_list(state)) do
+      :any -> @any_id_per_address
+      scales -> max(2 * scales, 2)
+    end
+  end
+
+  # An IPv6 client has a whole /64 to connect from: that is one address here.
+  defp peer_address(socket) do
+    case ThousandIsland.Socket.peername(socket) do
+      {:ok, {{0, 0, 0, 0, 0, 0xFFFF, _, _} = address, _port}} -> address
+      {:ok, {{a, b, c, d, _, _, _, _}, _port}} -> {a, b, c, d, :v6_net}
+      {:ok, {address, _port}} -> address
+      _ -> :unknown
+    end
+  end
+
+  # One line per interval for the whole listener, not one per connection of
+  # a flood.
+  defp log_over_limit(socket, limit) do
+    registry = OpenPlaatoKeg.KegPeerRegistry
+
+    last =
+      case Registry.meta(registry, :over_limit_logged) do
+        {:ok, time} -> time
+        :error -> nil
+      end
+
+    if last == nil or now() - last >= @over_limit_log_ms do
+      Registry.put_meta(registry, :over_limit_logged, now())
+
+      Logger.warning(
+        "Keg listener: #{peer(socket)} has #{limit} connections open; closing further ones"
+      )
+    end
+  end
 
   defp handle_frames(frames, read_size, socket, %{keg_id: nil} = state) do
     state = %{state | received: state.received + read_size}
