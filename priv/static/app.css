@@ -171,3 +171,14 @@ label.field > span {
 }
 .toast.show { opacity: 1; }
 .toast.err { border-color: var(--warn); color: var(--warn); }
+
+.tag-offline {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.is-offline .dim-offline { opacity: 0.45; }
+.low-text { color: var(--warn); }
+
+[hidden] { display: none !important; }

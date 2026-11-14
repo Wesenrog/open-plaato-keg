@@ -76,10 +76,11 @@ defmodule OpenPlaatoKeg.HttpRouter do
     keg_id = conn.params["id"]
     %{"value" => value} = conn.body_params
 
-    KegData.publish(keg_id, [{:empty_keg_weight, value}])
-
+    # The scale does not report this pin back: what is stored is what was sent,
+    # so it is stored only when it was sent.
     case KegCommander.set_empty_keg_weight_value(keg_id, value) do
       :ok ->
+        KegData.publish(keg_id, [{:empty_keg_weight, value}])
         json_response(conn, 200, %{status: "ok", command: "empty_keg_weight", value: value})
 
       {:error, reason} ->

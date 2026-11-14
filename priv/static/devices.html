@@ -14,7 +14,8 @@
     .dev-head .spacer { margin-left: auto; }
     .dev-body { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; display: none; }
     .dev.open .dev-body { display: block; }
-    .dev-weight { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.75rem; }
+    .dev-weight { font-size: 1.6rem; font-weight: 800; }
+    .dev-note { font-size: 0.85rem; color: var(--text-muted); margin: 0.2rem 0 0.75rem; }
     .dev-weight small { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
     .grp { display: flex; gap: 0.5rem; align-items: flex-end; }
     .grp .field { flex: 1; margin: 0.5rem 0; }
@@ -25,17 +26,18 @@
   <header data-nav="devices"></header>
   <main>
     <div class="devices" id="list"></div>
-    <p class="empty" id="empty" hidden>No keg devices seen yet. Connect a scale to the TCP port.</p>
+    <p class="empty" id="empty" hidden>No scales seen yet. Connect a scale to the TCP port.</p>
   </main>
 
   <script src="/app.js"></script>
   <script>
     const list = qs("#list");
     const emptyMsg = qs("#empty");
-    let devices = [];       // ids (all known)
-    let connected = [];     // connected ids
+    let devices = [];             // ids (all known)
+    let connected = new Set();    // connected ids
     let records = new Map();
     let openId = null;
+    let built = "";               // what the cards were built from
 
     async function refresh() {
       try {
@@ -46,7 +48,7 @@
         ]);
         const merged = new Set([...(ids || []), ...(conn || [])]);
         devices = [...merged].sort();
-        connected = conn || [];
+        connected = new Set(conn || []);
         records = new Map((all || []).map((k) => [k.id, k]));
         render();
       } catch (e) {
@@ -54,54 +56,87 @@
       }
     }
 
+    /* Cards are rebuilt only when the list of scales changes; otherwise they
+       are updated in place, so the poll does not wipe what is being typed. */
     function render() {
       emptyMsg.hidden = devices.length > 0;
-      list.innerHTML = "";
-      devices.forEach((id) => list.appendChild(deviceCard(id)));
+      const key = devices.join("|");
+      if (key !== built) {
+        built = key;
+        list.innerHTML = "";
+        devices.forEach((id) => list.appendChild(deviceCard(id)));
+      }
+      [...list.children].forEach(updateCard);
+    }
+
+    function updateCard(card) {
+      const id = card.dataset.id;
+      const rec = records.get(id) || { id };
+      const online = connected.has(id);
+      const name = (rec.my_label || "").trim();
+
+      card.classList.toggle("open", openId === id);
+      qs(".dot", card).className = "dot " + (online ? "online" : "");
+      qs(".nm", card).textContent = name || "Unnamed scale";
+      qs(".badge", card).hidden = !(online && !name);
+      qs(".tag-offline", card).hidden = online;
+
+      const hasReading = num(rec.amount_left) != null;
+      qs(".v-gross", card).textContent = hasReading ? grossKg(rec).toFixed(2) : "–";
+      qs(".dev-note", card).textContent =
+        (online ? "" : "Last stored reading. ") +
+        "Everything on the platform; the keg tare in effect is " + tareKg(rec).toFixed(2) + " kg.";
+      qs(".v-fw", card).textContent = rec.firmware_version ? "fw " + rec.firmware_version : "";
+      card.querySelectorAll("button.cmd").forEach((b) => (b.disabled = !online));
+
+      // Stored values go into fields that are not being edited.
+      const fill = (sel, value) => {
+        const el = qs(sel, card);
+        if (document.activeElement === el || el.dataset.dirty) return;
+        el.value = value;
+      };
+      fill(".f-name", name);
+      const toff = num(rec.temperature_offset);
+      fill(".f-toff", toff != null ? String(toff) : "");
+      const sens = String(rec.sensitivity == null ? "" : parseInt(rec.sensitivity, 10));
+      fill(".f-sens", ["1", "2", "3", "4"].indexOf(sens) !== -1 ? sens : "");
     }
 
     function deviceCard(id) {
-      const rec = records.get(id) || {};
-      const online = connected.indexOf(id) !== -1;
-      const name = (rec.my_label || "").trim();
-      const needsSetup = online && !name;
-
-      const card = ce("div", "card dev" + (openId === id ? " open" : ""));
+      const card = ce("div", "card dev");
       card.dataset.id = id;
-
-      const weightTxt = netWeightKg(rec).toFixed(2);
 
       card.innerHTML =
         '<div class="dev-head">' +
-          '<span class="dot ' + (online ? "online" : "") + '"></span>' +
-          '<span class="nm">' + (name ? esc(name) : "Unnamed keg") + '</span>' +
-          (needsSetup ? '<span class="badge">Needs setup</span>' : '') +
+          '<span class="dot"></span>' +
+          '<span class="nm"></span>' +
+          '<span class="badge" hidden>Needs setup</span>' +
+          '<span class="tag-offline" hidden>offline</span>' +
           '<span class="spacer"></span>' +
           '<span class="id">' + esc(id) + '</span>' +
         '</div>' +
         '<div class="dev-body">' +
-          '<div class="dev-weight">' + weightTxt + ' <small>kg</small></div>' +
+          '<div class="dev-weight"><span class="v-gross"></span> <small>kg on the scale</small></div>' +
+          '<div class="dev-note"></div>' +
           '<label class="field"><span>Name</span>' +
-            '<div class="grp"><input class="f-name" maxlength="40" placeholder="e.g. Left keg" />' +
+            '<div class="grp"><input class="f-name" maxlength="40" placeholder="e.g. Left scale" />' +
             '<button class="b-name">Save</button></div></label>' +
-          '<label class="field"><span>Known-weight calibration (kg)</span>' +
+          '<label class="field"><span>Zero the bare scale (nothing on the platform)</span>' +
+            '<div class="grp"><button class="b-tare cmd">Zero the scale</button></div></label>' +
+          '<label class="field"><span>Known-weight calibration (kg) — zero first, then put the weight on</span>' +
             '<div class="grp"><input class="f-cal" type="number" min="0" step="0.001" inputmode="decimal" placeholder="known mass on scale" />' +
-            '<button class="b-cal">Calibrate</button></div></label>' +
-          '<label class="field"><span>Tare</span>' +
-            '<div class="grp"><button class="b-tare">Zero the scale</button></div></label>' +
-          '<label class="field"><span>Default full volume (L)</span>' +
-            '<div class="grp"><input class="f-max" type="number" min="1" step="0.1" inputmode="decimal" placeholder="e.g. 19" />' +
-            '<button class="b-max">Save</button></div></label>' +
+            '<button class="b-cal cmd">Calibrate</button></div></label>' +
           '<label class="field"><span>Sensitivity</span>' +
             '<div class="grp"><select class="f-sens">' +
-              '<option value="very_low">Very low</option><option value="low">Low</option>' +
-              '<option value="medium">Medium</option><option value="high">High</option>' +
-            '</select><button class="b-sens">Apply</button></div></label>' +
+              '<option value="">Not reported by the scale</option>' +
+              '<option value="1">Very low</option><option value="2">Low</option>' +
+              '<option value="3">Medium</option><option value="4">High</option>' +
+            '</select><button class="b-sens cmd">Apply</button></div></label>' +
           '<label class="field"><span>Temperature offset (°C)</span>' +
             '<div class="grp"><input class="f-toff" type="number" step="0.1" inputmode="decimal" placeholder="e.g. -1.5" />' +
-            '<button class="b-toff">Apply</button></div></label>' +
+            '<button class="b-toff cmd">Apply</button></div></label>' +
           '<div class="row-actions">' +
-            '<span class="muted">' + (rec.firmware_version ? "fw " + esc(rec.firmware_version) : "") + '</span>' +
+            '<span class="muted v-fw"></span>' +
             '<button class="b-del danger">Remove device</button>' +
           '</div>' +
         '</div>';
@@ -113,40 +148,42 @@
 
       const post = (path, body) =>
         api("/api/kegs/" + encodeURIComponent(id) + path, "POST", body || {});
+      const fail = (e) => toast(e.message, true);
 
-      const nameInput = qs(".f-name", card);
-      nameInput.value = name;
-      const maxInput = qs(".f-max", card);
-      if (rec.max_keg_volume != null && maxInput.value === "") maxInput.value = rec.max_keg_volume;
+      // A field the user has changed keeps its value until it is sent.
+      card.querySelectorAll(".f-name, .f-toff, .f-sens").forEach((el) => {
+        el.addEventListener("input", () => (el.dataset.dirty = "1"));
+        el.addEventListener("change", () => (el.dataset.dirty = "1"));
+      });
+      const sent = (sel) => delete qs(sel, card).dataset.dirty;
 
       qs(".b-name", card).addEventListener("click", () =>
-        post("/label", { value: nameInput.value.trim() }).then(() => { toast("Name saved"); refresh(); }).catch((e) => toast(e.message, true))
+        post("/label", { value: qs(".f-name", card).value.trim() })
+          .then(() => { sent(".f-name"); toast("Name saved"); refresh(); }).catch(fail)
       );
+      qs(".b-tare", card).addEventListener("click", () => {
+        if (!confirm("Zero the scale? Only with nothing on the platform.")) return;
+        post("/tare").then(() => setTimeout(() => post("/tare-release").catch(() => {}), 600))
+          .then(() => toast("Zeroed")).catch(fail);
+      });
       qs(".b-cal", card).addEventListener("click", () => {
         const v = qs(".f-cal", card).value.trim();
         if (!v) return toast("Enter the known mass", true);
-        post("/calibrate-known-weight", { value: v }).then(() => toast("Calibration sent")).catch((e) => toast(e.message, true));
+        post("/calibrate-known-weight", { value: v }).then(() => toast("Calibration sent")).catch(fail);
       });
-      qs(".b-tare", card).addEventListener("click", () => {
-        post("/tare").then(() => setTimeout(() => post("/tare-release").catch(() => {}), 600))
-          .then(() => toast("Tared")).catch((e) => toast(e.message, true));
+      qs(".b-sens", card).addEventListener("click", () => {
+        const v = qs(".f-sens", card).value;
+        if (!v) return toast("Choose a sensitivity", true);
+        post("/sensitivity", { value: v }).then(() => { sent(".f-sens"); toast("Applied"); }).catch(fail);
       });
-      qs(".b-max", card).addEventListener("click", () => {
-        const v = maxInput.value.trim();
-        if (!v) return toast("Enter a volume", true);
-        post("/max-keg-volume", { value: v }).then(() => toast("Saved")).catch((e) => toast(e.message, true));
-      });
-      qs(".b-sens", card).addEventListener("click", () =>
-        post("/sensitivity", { value: qs(".f-sens", card).value }).then(() => toast("Applied")).catch((e) => toast(e.message, true))
-      );
       qs(".b-toff", card).addEventListener("click", () => {
         const v = qs(".f-toff", card).value.trim();
         if (v === "") return toast("Enter an offset", true);
-        post("/temperature-offset", { value: v }).then(() => toast("Applied")).catch((e) => toast(e.message, true));
+        post("/temperature-offset", { value: v }).then(() => { sent(".f-toff"); toast("Applied"); }).catch(fail);
       });
       qs(".b-del", card).addEventListener("click", () => {
         if (!confirm("Remove this device and all its stored data?")) return;
-        post("/delete").then(() => { toast("Removed"); openId = null; refresh(); }).catch((e) => toast(e.message, true));
+        post("/delete").then(() => { toast("Removed"); openId = null; refresh(); }).catch(fail);
       });
 
       return card;
@@ -160,12 +197,10 @@
       }
       if (msg.type || !msg.id) return;
       records.set(msg.id, msg);
-      if (openId === msg.id) {
-        const w = qs('.dev[data-id="' + CSS.escape(msg.id) + '"] .dev-weight');
-        if (w) {
-          w.innerHTML = netWeightKg(msg).toFixed(2) + ' <small>kg</small>';
-        }
-      }
+      trackConnected(connected, msg);
+      if (devices.indexOf(msg.id) === -1) return refresh();
+      const card = qs('.dev[data-id="' + CSS.escape(msg.id) + '"]');
+      if (card) updateCard(card);
     });
 
     refresh();
