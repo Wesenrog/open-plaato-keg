@@ -1,4 +1,5 @@
 defmodule OpenPlaatoKeg.WebSocketHandler do
+  alias OpenPlaatoKeg.KegCommander
   alias OpenPlaatoKeg.Models.KegData
 
   def init(state) do
@@ -15,15 +16,23 @@ defmodule OpenPlaatoKeg.WebSocketHandler do
     :ok
   end
 
+  # The record goes out with `connected`, so that a page can tell the update a
+  # scale sends from the one that is published when it drops.
   def publish(id, _data) do
-    keg_all_data = KegData.get(id)
+    connected = match?({:ok, _}, KegCommander.lookup_socket(id))
+
+    message =
+      id
+      |> KegData.get()
+      |> Map.put(:connected, connected)
+      |> Poison.encode!()
 
     Registry.dispatch(
       OpenPlaatoKeg.WebSocketConnectionRegistry,
       "websocket_clients",
       fn entries ->
         for {pid, _} <- entries do
-          send(pid, {:broadcast, Poison.encode!(keg_all_data)})
+          send(pid, {:broadcast, message})
         end
       end
     )

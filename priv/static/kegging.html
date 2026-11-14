@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/app.css" />
   <style>
     .kegging { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem; }
+    #panel { display: flex; flex-direction: column; gap: 1.25rem; }
     .device-row { display: flex; gap: 0.75rem; align-items: center; }
     .device-row select { flex: 1; }
     .weight-readout { text-align: center; padding: 0.75rem 0; }
@@ -27,7 +28,7 @@
     <div class="kegging">
       <div class="card">
         <div class="device-row">
-          <select id="device"><option value="">Select a keg…</option></select>
+          <select id="device"><option value="">Select a scale…</option></select>
           <button id="refreshDevices" title="Reload list">↻</button>
         </div>
       </div>
@@ -35,13 +36,14 @@
       <div id="panel" hidden>
         <div class="card weight-readout">
           <div class="status" id="wstatus">waiting for data…</div>
+          <div class="disabled-note" id="gross"></div>
         </div>
 
         <div class="card step">
           <h3>1 · Empty keg</h3>
-          <p class="disabled-note">Put the empty keg on the scale, then capture its weight as the tare.</p>
+          <p class="disabled-note">Put the empty keg on the scale with the tubes and filter attached, then zero it. This is the zero for this fill only, not the tare printed on the keg.</p>
           <div class="row">
-            <button id="setEmpty" class="primary">Set empty keg</button>
+            <button id="setEmpty" class="primary cmd">Zero with empty keg</button>
           </div>
           <div class="disabled-note" id="emptyVal"></div>
         </div>
@@ -50,7 +52,7 @@
           <h3>2 · Full volume</h3>
           <div class="row">
             <input id="maxVol" type="number" min="1" step="0.1" inputmode="decimal" placeholder="e.g. 19" />
-            <button id="saveMax">Save</button>
+            <button id="saveMax" class="cmd">Save</button>
           </div>
           <div class="disabled-note" id="maxVal"></div>
         </div>
@@ -66,43 +68,16 @@
 
         <div class="card step">
           <h3>4 · Done</h3>
+          <p class="disabled-note">When the keg goes on a scale for serving, enter the tare printed on the keg on the Serving page.</p>
           <div class="row">
             <button id="nextKeg">Start next keg</button>
           </div>
         </div>
 
-        <details class="card">
-          <summary>Calibration &amp; advanced</summary>
-          <label class="field"><span>Known-weight calibration (kg)</span>
-            <div class="step row">
-              <input id="calWeight" type="number" min="0" step="0.001" inputmode="decimal" placeholder="known mass on scale" />
-              <button id="calBtn">Calibrate</button>
-            </div>
-          </label>
-          <label class="field"><span>Tare (zero the scale)</span>
-            <div class="step row"><button id="tareBtn">Tare now</button></div>
-          </label>
-          <label class="field"><span>Sensitivity</span>
-            <div class="step row">
-              <select id="sens">
-                <option value="very_low">Very low</option>
-                <option value="low">Low</option>
-                <option value="medium" selected>Medium</option>
-                <option value="high">High</option>
-              </select>
-              <button id="sensBtn">Apply</button>
-            </div>
-          </label>
-          <label class="field"><span>Temperature offset (°C)</span>
-            <div class="step row">
-              <input id="tempOff" type="number" step="0.1" inputmode="decimal" placeholder="e.g. -1.5" />
-              <button id="tempOffBtn">Apply</button>
-            </div>
-          </label>
-        </details>
+        <p class="disabled-note">Zeroing the bare scale, calibration, sensitivity and temperature offset belong to the scale: see <a href="/devices.html">Keg Devices</a>.</p>
       </div>
 
-      <p class="empty" id="noneMsg">No kegs registered yet. Connect a scale to the TCP port.</p>
+      <p class="empty" id="noneMsg">No scales registered yet. Connect a scale to the TCP port.</p>
     </div>
   </main>
 
@@ -111,22 +86,43 @@
     const deviceSel = qs("#device");
     const panel = qs("#panel");
     const noneMsg = qs("#noneMsg");
+    const maxVol = qs("#maxVol");
     let currentId = "";
     let latest = {};
     let connectedSet = new Set();
+    let known = new Map();    // id -> record, for the list
+
+    try { currentId = localStorage.getItem("kegging.scale") || ""; } catch (_) {}
 
     function post(path, body) {
       return api("/api/kegs/" + encodeURIComponent(currentId) + path, "POST", body || {});
     }
 
-    function optionLabel(keg, id) {
-      const name = (keg && keg.my_label && keg.my_label.trim()) || "Keg " + id.slice(0, 8);
-      return connectedSet.has(id) ? name : name + " — offline";
+    function optionLabel(rec) {
+      return connectedSet.has(rec.id) ? scaleName(rec) : scaleName(rec) + " — offline";
     }
 
+    function renderList() {
+      deviceSel.innerHTML = '<option value="">Select a scale…</option>';
+      [...known.values()]
+        .sort((a, b) => {
+          const ac = connectedSet.has(a.id) ? 0 : 1;
+          const bc = connectedSet.has(b.id) ? 0 : 1;
+          return ac - bc || String(a.id).localeCompare(String(b.id));
+        })
+        .forEach((rec) => {
+          const o = ce("option");
+          o.value = rec.id;
+          o.textContent = optionLabel(rec);
+          deviceSel.appendChild(o);
+        });
+      noneMsg.hidden = known.size > 0;
+      deviceSel.value = known.has(currentId) ? currentId : "";
+    }
+
+    /* A failed poll keeps the list and the panel as they are. */
     async function loadDevices() {
-      let kegs = [];
-      let connected = [];
+      let kegs, connected;
       try {
         [kegs, connected] = await Promise.all([
           api("/api/kegs"),
@@ -134,71 +130,58 @@
         ]);
       } catch (e) {
         toast(e.message, true);
+        return;
       }
-      kegs = kegs || [];
       connectedSet = new Set(connected || []);
-
+      known = new Map((kegs || []).map((k) => [k.id, k]));
       // include any connected id that has no stored record yet
-      const byId = new Map(kegs.map((k) => [k.id, k]));
       connectedSet.forEach((id) => {
-        if (!byId.has(id)) byId.set(id, { id });
+        if (!known.has(id)) known.set(id, { id });
       });
 
-      const prev = deviceSel.value;
-      deviceSel.innerHTML = '<option value="">Select a keg…</option>';
-      [...byId.values()]
-        .sort((a, b) => {
-          const ac = connectedSet.has(a.id) ? 0 : 1;
-          const bc = connectedSet.has(b.id) ? 0 : 1;
-          return ac - bc || String(a.id).localeCompare(String(b.id));
-        })
-        .forEach((keg) => {
-          const o = ce("option");
-          o.value = keg.id;
-          o.textContent = optionLabel(keg, keg.id);
-          deviceSel.appendChild(o);
-        });
-
-      noneMsg.hidden = byId.size > 0;
-      if ([...byId.keys()].indexOf(prev) !== -1) {
-        deviceSel.value = prev;
-      } else if (currentId && byId.has(currentId)) {
-        deviceSel.value = currentId;
-      }
-      if (!deviceSel.value) selectDevice("");
+      renderList();
+      if (currentId && !known.has(currentId)) return selectDevice("");
+      if (currentId && panel.hidden) return selectDevice(currentId);
+      if (currentId) applyData(known.get(currentId));
     }
 
     async function selectDevice(id) {
       currentId = id;
+      try { localStorage.setItem("kegging.scale", id); } catch (_) {}
       panel.hidden = !id;
+      // The inputs belong to the scale that was selected before.
+      maxVol.value = "";
       if (!id) return;
       try {
         latest = (await api("/api/kegs/" + encodeURIComponent(id))) || {};
       } catch (_) {
-        latest = {};
+        latest = known.get(id) || { id };
       }
+      if (currentId !== id) return;
       applyData(latest);
     }
 
-    function applyData(keg) {
-      if (!keg || keg.id !== currentId) return;
-      latest = keg;
+    function applyData(rec) {
+      if (!rec || rec.id !== currentId) return;
+      latest = rec;
+      const online = connectedSet.has(rec.id);
 
-      qs("#wstatus").textContent = !connectedSet.has(keg.id)
+      qs("#wstatus").textContent = !online
         ? "offline — showing last stored data\ncommands won't reach the scale"
-        : keg.is_pouring && keg.is_pouring !== "0"
+        : isPouring(rec)
         ? "settling…"
         : "live";
+      qs("#gross").textContent = "On the scale: " + grossKg(rec).toFixed(2) + " kg";
+      panel.querySelectorAll("button.cmd").forEach((b) => (b.disabled = !online));
 
-      const empty = num(keg.empty_keg_weight);
-      qs("#emptyVal").textContent = empty != null ? "Stored empty weight: " + empty.toFixed(2) + " kg" : "";
+      qs("#emptyVal").textContent = "Zeroed at " + tareKg(rec).toFixed(2) + " kg";
 
-      const cap = num(keg.max_keg_volume);
+      const cap = num(rec.max_keg_volume);
       qs("#maxVal").textContent = cap != null ? "Stored full volume: " + cap.toFixed(1) + " L" : "";
-      if (cap != null && !qs("#maxVol").value) qs("#maxVol").value = cap;
+      if (cap != null && !maxVol.value && document.activeElement !== maxVol) maxVol.value = cap;
 
-      const pct = percentLeft(keg);
-      const litres = litresLeft(keg);
+      const pct = percentLeft(rec);
+      const litres = litresLeft(rec);
       qs("#fillPct").textContent = pct.toFixed(0);
       qs("#fillL").textContent = litres.toFixed(1);
       qs("#fillCap").textContent = cap != null ? cap.toFixed(1) : "–";
@@ -209,21 +192,28 @@
     deviceSel.addEventListener("change", () => selectDevice(deviceSel.value));
     qs("#refreshDevices").addEventListener("click", loadDevices);
 
-    qs("#setEmpty").addEventListener("click", async (e) => {
-      e.currentTarget.disabled = true;
+    /* The scale has no "capture" command: its empty-keg pin takes a weight.
+       So the zero is what is on the platform now, which is what the scale
+       reports as left plus the tare it holds. */
+    qs("#setEmpty").addEventListener("click", async () => {
+      const gross = grossKg(latest);
+      if (num(latest.amount_left) == null) return toast("No reading from the scale yet", true);
+      if (gross < 0) return toast("The scale reads below zero: zero the bare scale on Keg Devices first", true);
+      const value = gross.toFixed(3);
       try {
-        await post("/empty-keg");
-        setTimeout(() => post("/empty-keg-release").catch(() => {}), 600);
-        toast("Empty keg weight captured");
+        await post("/empty-keg-weight", { value });
+        // Until the scale reports again: nothing is left above the new zero.
+        latest.empty_keg_weight = value;
+        latest.amount_left = "0.000";
+        applyData(latest);
+        toast("Zeroed at " + gross.toFixed(2) + " kg");
       } catch (err) {
         toast(err.message, true);
-      } finally {
-        setTimeout(() => (qs("#setEmpty").disabled = false), 1200);
       }
     });
 
     qs("#saveMax").addEventListener("click", async () => {
-      const v = qs("#maxVol").value.trim();
+      const v = maxVol.value.trim();
       if (!v) return toast("Enter a volume", true);
       try {
         await post("/max-keg-volume", { value: v });
@@ -234,56 +224,16 @@
     });
 
     qs("#nextKeg").addEventListener("click", () => {
-      qs("#maxVol").value = "";
-      qs("#calWeight").value = "";
       toast("Ready for the next keg");
       selectDevice(currentId);
     });
 
-    qs("#calBtn").addEventListener("click", async () => {
-      const v = qs("#calWeight").value.trim();
-      if (!v) return toast("Enter the known mass", true);
-      try {
-        await post("/calibrate-known-weight", { value: v });
-        toast("Calibration sent");
-      } catch (e) {
-        toast(e.message, true);
-      }
-    });
-
-    qs("#tareBtn").addEventListener("click", async () => {
-      try {
-        await post("/tare");
-        setTimeout(() => post("/tare-release").catch(() => {}), 600);
-        toast("Tared");
-      } catch (e) {
-        toast(e.message, true);
-      }
-    });
-
-    qs("#sensBtn").addEventListener("click", async () => {
-      try {
-        await post("/sensitivity", { value: qs("#sens").value });
-        toast("Sensitivity applied");
-      } catch (e) {
-        toast(e.message, true);
-      }
-    });
-
-    qs("#tempOffBtn").addEventListener("click", async () => {
-      const v = qs("#tempOff").value.trim();
-      if (v === "") return toast("Enter an offset", true);
-      try {
-        await post("/temperature-offset", { value: v });
-        toast("Offset applied");
-      } catch (e) {
-        toast(e.message, true);
-      }
-    });
-
     connectWs((msg) => {
-      if (msg.type) return;
-      if (msg.id) connectedSet.add(msg.id);
+      if (msg.type === "keg_removed") return loadDevices();
+      if (msg.type || !msg.id) return;
+      const isNew = !known.has(msg.id);
+      known.set(msg.id, msg);
+      if (trackConnected(connectedSet, msg) || isNew) renderList();
       applyData(msg);
     });
 

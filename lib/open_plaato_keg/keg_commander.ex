@@ -80,8 +80,6 @@ defmodule OpenPlaatoKeg.KegCommander do
   # Keg setup commands
   def tare(keg_id), do: send_command(keg_id, :tare, "1")
   def tare_release(keg_id), do: send_command(keg_id, :tare, "0")
-  def set_empty_keg(keg_id), do: send_command(keg_id, :empty_keg_weight, "1")
-  def set_empty_keg_release(keg_id), do: send_command(keg_id, :empty_keg_weight, "0")
 
   def set_empty_keg_weight_value(keg_id, value),
     do: send_command(keg_id, :empty_keg_weight, value)

@@ -114,26 +114,49 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-/* Net beer weight/volume in litres for a keg record. */
-function litresLeft(keg) {
-  return num(keg.amount_left) || 0;
+/* What the scale reports as left, in kg: its weight minus the tare it holds.
+   Negative when the tare is too high or the scale's zero is off. */
+function netKg(rec) {
+  return num(rec.amount_left) || 0;
 }
 
-/* Net weight in kg for display. weight_raw (pin 53) is the load cell's raw
-   count on an uncalibrated scale -- large and negative, e.g. -171038 -- and is
-   a weight only when it is plausible; otherwise use the keg's calibrated
-   amount_left. Same 0-200 kg rule as upstream's compute_get_keg_current_weight. */
-function netWeightKg(keg) {
-  const raw = num(keg.weight_raw);
-  return raw != null && raw >= 0 && raw <= 200 ? raw : litresLeft(keg);
+/* Litres left for display: 1 litre per kg, never below zero. */
+function litresLeft(rec) {
+  return Math.max(0, netKg(rec));
 }
 
-function percentLeft(keg) {
-  return Math.max(0, Math.min(100, num(keg.percent_of_beer_left) || 0));
+/* The tare the scale holds (kg). The scale does not report it back, so this
+   is what was last sent to it. */
+function tareKg(rec) {
+  return num(rec.empty_keg_weight) || 0;
 }
 
-function isConnected(keg, connectedIds) {
-  return connectedIds && connectedIds.indexOf(keg.id) !== -1;
+/* Everything on the platform (kg): what is left plus the tare. */
+function grossKg(rec) {
+  return netKg(rec) + tareKg(rec);
+}
+
+function percentLeft(rec) {
+  return Math.max(0, Math.min(100, num(rec.percent_of_beer_left) || 0));
+}
+
+function isPouring(rec) {
+  return !!rec.is_pouring && rec.is_pouring !== "0";
+}
+
+function scaleName(rec) {
+  return (rec && rec.my_label && rec.my_label.trim()) || "Scale " + String(rec.id).slice(0, 8);
+}
+
+/* Keep a Set of connected scale ids current from a WebSocket record. The
+   server marks each record with `connected`; the one it sends when a scale
+   drops has it false. Without the mark (older server) a record counts as
+   connected. Returns true when the set changed. */
+function trackConnected(set, msg) {
+  const had = set.has(msg.id);
+  if (msg.connected === false) set.delete(msg.id);
+  else set.add(msg.id);
+  return had !== set.has(msg.id);
 }
 
 document.addEventListener("DOMContentLoaded", renderTopbar);

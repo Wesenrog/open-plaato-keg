@@ -83,18 +83,25 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
 
 - **HttpRouter** (`http_router.ex`) — Plug/Bandit router serving:
   - Reads: `/api/kegs`, `/api/kegs/devices`, `/api/kegs/connected`, `/api/kegs/:id`, `/api/alive`.
-  - Commands `/api/kegs/:id/*`: `tare`, `tare-release`, `empty-keg`, `empty-keg-release`,
-    `empty-keg-weight`, `max-keg-volume`, `calibrate-known-weight`, `temperature-offset`,
-    `sensitivity`, `label`, `display-mode`, `reset-last-pour`, `delete`; plus `/api/kegs/order`.
+  - Commands `/api/kegs/:id/*`: `tare`, `tare-release`, `empty-keg-weight`, `max-keg-volume`,
+    `calibrate-known-weight`, `temperature-offset`, `sensitivity`, `label`, `contents`, `delete`.
   - `/ws` (WebSocket upgrade) and static files from `priv/static`.
 - **WebSocketHandler** — Broadcasts to browser clients via `WebSocketConnectionRegistry`. Keg
-  updates send the raw keg JSON; deletions send `%{type: "keg_removed", id: ...}`.
+  updates send the keg JSON plus `connected` (false in the update published when a scale
+  drops); deletions send `%{type: "keg_removed", id: ...}`.
 
 ### Web UI (`priv/static`)
 
-- `index.html` — **Serving** page: up to three kegs, landscape-tablet layout.
-- `kegging.html` — **Kegging** page: one selected keg, guided empty→fill flow + calibration panel.
-- `devices.html` — **Keg Devices** page: one-time per-scale setup (name, calibrate, defaults, remove).
+A "keg" in the code, the store and the API is a **scale**. Kegs come and go: several are
+filled on one scale, and a full keg is served from any scale until it is empty.
+
+- `index.html` — **Serving** page: up to three scales, landscape-tablet layout. Shows litres
+  left only (1 litre per kg, never below zero, warning under 2 L) and the keg tare in effect,
+  which is typed in from the weight printed on the keg.
+- `kegging.html` — **Kegging** page: one selected scale, guided empty→fill flow. Step 1 zeroes
+  with the empty keg, tubes and filter on; that zero is for the fill, not the keg's tare.
+- `devices.html` — **Keg Devices** page: what belongs to the scale (name, zero the bare scale,
+  known-weight calibration, sensitivity, temperature offset, remove).
 - `app.css` / `app.js` — shared styles and helpers (top bar, `api()`, `connectWs()`, toasts).
 
 ### Supervision Tree
@@ -121,11 +128,16 @@ cases. The `assert_value` library is available for snapshot-style assertions.
 
 ## Key Conventions
 
+- The empty-keg pin (62) takes a weight in kg, and the scale does not report it back: the
+  stored `empty_keg_weight` is what was last sent. It is not a button: sending `1` then `0`
+  sets a tare of 1 kg and then 0 kg and captures nothing (checked on a scale). To zero
+  with what is on the platform, send `amount_left + empty_keg_weight` (the Kegging page does).
+
 - Keg IDs are 32-character hex strings (the Blynk auth token), lower-cased at login. The id is
   all a keg has to identify itself: logs carry `KegId.short/1`, never the id.
 - The key a keg has in the store, the registry and the API (`:id`) is its id, or its name
   from the allow-list file. Nothing may assume that key is 32 hex characters.
 - Keg properties flow as keyword lists through the decode pipeline.
-- Locally-stored, user-defined fields are prefixed with `my_` (`my_label`, `my_sort_order`,
-  `my_display_mode`) and never sent to hardware.
+- Locally-stored, user-defined fields are prefixed with `my_` and never sent to hardware:
+  `my_label` is the scale's name (Keg Devices), `my_contents` what is in the keg on it (Serving).
 - The app version is read from `.release/version` at compile time.

@@ -31,15 +31,19 @@
       padding: 0;
       width: 100%;
     }
+    .keg-id { flex: 1; min-width: 0; }
+    .keg-scale { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }
     .keg-name::placeholder { color: var(--text-muted); font-weight: 500; }
     .keg-status { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
     .keg-temp { font-size: 0.9rem; color: var(--text-muted); }
-    .keg-figure { margin-top: auto; }
-    .keg-litres { font-size: 2.6rem; font-weight: 800; line-height: 1; }
+    .keg-litres { font-size: 3.2rem; font-weight: 800; line-height: 1; }
     .keg-litres small { font-size: 1rem; font-weight: 600; color: var(--text-muted); margin-left: 0.3rem; }
-    .keg-sub { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 0.35rem; }
-    .keg-actions { display: flex; gap: 0.5rem; }
-    .keg-actions button { flex: 1; }
+    .keg-sub { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 0; }
+    .keg-low { font-size: 0.85rem; font-weight: 700; color: var(--warn); margin-top: 0.4rem; }
+    .keg-tare { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+    .keg-tare .lbl { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+    .keg-tare .row { display: flex; gap: 0.5rem; }
+    .keg-tare input { flex: 1; min-width: 0; }
     .pick-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
     .pick-bar .chip {
       font-size: 0.85rem;
@@ -59,18 +63,18 @@
       <span class="muted">Show:</span>
     </div>
     <div class="serving-grid" id="grid"></div>
-    <p class="empty" id="empty" hidden>No kegs connected yet.</p>
+    <p class="empty" id="empty" hidden>No scales registered yet.</p>
   </main>
 
   <script src="/app.js"></script>
   <script>
-    const MAX_KEGS = 3;
+    const MAX_KEGS = 3;       // scales shown at once
     const grid = qs("#grid");
     const emptyMsg = qs("#empty");
     const pickBar = qs("#pickBar");
 
     let kegs = new Map();     // id -> keg record
-    let connected = [];       // connected ids
+    let connected = new Set(); // connected ids
     let selection = loadSelection();
 
     function loadSelection() {
@@ -84,14 +88,7 @@
     }
 
     function sortedIds() {
-      return [...kegs.values()]
-        .sort((a, b) => {
-          const ao = a.my_sort_order == null || a.my_sort_order === "" ? 1e9 : parseInt(a.my_sort_order, 10);
-          const bo = b.my_sort_order == null || b.my_sort_order === "" ? 1e9 : parseInt(b.my_sort_order, 10);
-          if (ao !== bo) return ao - bo;
-          return String(a.id).localeCompare(String(b.id));
-        })
-        .map((k) => k.id);
+      return [...kegs.keys()].sort((a, b) => String(a).localeCompare(String(b)));
     }
 
     function visibleIds() {
@@ -112,7 +109,7 @@
       all.forEach((id) => {
         const k = kegs.get(id);
         const chip = ce("span", "chip" + (vis.indexOf(id) !== -1 ? " on" : ""));
-        chip.textContent = (k && k.my_label && k.my_label.trim()) || shortId(id);
+        chip.textContent = scaleName(k || { id });
         chip.onclick = () => toggleSelection(id);
         pickBar.appendChild(chip);
       });
@@ -128,74 +125,124 @@
       render();
     }
 
-    function shortId(id) {
-      return "Keg " + String(id).slice(0, 4);
-    }
+    const LOW_LITRES = 2;
+    let shown = "";           // ids of the cards in the grid, joined
 
-    function kegCard(keg) {
+    function kegCard(id) {
       const card = ce("div", "card keg");
-      card.dataset.kegId = keg.id;
-
-      const online = connected.indexOf(keg.id) !== -1;
-      const pouring = keg.is_pouring && keg.is_pouring !== "0";
-      const temp = num(keg.keg_temperature);
-      const litres = litresLeft(keg);
-      const pct = percentLeft(keg);
-      const cap = num(keg.max_keg_volume);
-      const lastPour = num(keg.last_pour) || 0;
-
+      card.dataset.kegId = id;
       card.innerHTML =
         '<div class="keg-top">' +
-          '<input class="keg-name" maxlength="40" placeholder="' + esc(shortId(keg.id)) + '" />' +
+          '<div class="keg-id"><input class="keg-name" maxlength="40" placeholder="What is in the keg?" />' +
+            '<div class="keg-scale"></div></div>' +
           '<span class="keg-status">' +
-            '<span class="dot ' + (pouring ? "pouring" : online ? "online" : "") + '"></span>' +
-            '<span class="keg-temp">' + (temp != null ? temp.toFixed(1) + "°C" : "--") + '</span>' +
+            '<span class="tag-offline" hidden>offline</span>' +
+            '<span class="dot"></span>' +
+            '<span class="keg-temp"></span>' +
           '</span>' +
         '</div>' +
-        '<div class="keg-figure">' +
-          '<div class="keg-litres">' + litres.toFixed(1) + '<small>L left</small></div>' +
-          '<div class="keg-sub"><span>' + pct.toFixed(0) + '% full</span>' +
-            (cap ? '<span>of ' + cap.toFixed(1) + ' L</span>' : '') + '</div>' +
-          '<div class="bar"><i class="' + (pct < 20 ? "low" : "") + '" style="width:' + pct.toFixed(1) + '%"></i></div>' +
-          (lastPour > 0 ? '<div class="keg-sub"><span>Last pour</span><span>' + Math.round(lastPour * 1000) + ' ml</span></div>' : '') +
+        '<div class="keg-figure dim-offline">' +
+          '<div class="keg-litres"><span class="v-litres"></span><small>L left</small></div>' +
+          '<div class="keg-low" hidden>Low — under ' + LOW_LITRES + ' L</div>' +
+          '<div class="keg-sub v-pour" hidden><span>Last pour</span><span class="v-pour-ml"></span></div>' +
         '</div>' +
-        '<div class="keg-actions">' +
-          '<button data-act="tare">Tare</button>' +
+        '<div class="keg-tare">' +
+          '<div class="lbl"><span>Keg tare (kg) — printed on the keg</span><span class="v-tare"></span></div>' +
+          '<div class="row">' +
+            '<input class="f-tare" type="number" min="0" step="0.01" inputmode="decimal" />' +
+            '<button class="b-tare">Set tare</button>' +
+          '</div>' +
         '</div>';
 
+      const path = "/api/kegs/" + encodeURIComponent(id);
+
       const nameInput = qs(".keg-name", card);
-      nameInput.value = (keg.my_label || "").trim();
       nameInput.addEventListener("change", async () => {
         try {
-          await api("/api/kegs/" + encodeURIComponent(keg.id) + "/label", "POST", { value: nameInput.value.trim() });
-          toast("Name saved");
+          await api(path + "/contents", "POST", { value: nameInput.value.trim() });
+          toast("Saved");
         } catch (e) {
           toast(e.message, true);
         }
       });
 
-      qs('[data-act="tare"]', card).addEventListener("click", async (ev) => {
-        const btn = ev.currentTarget;
+      const tareInput = qs(".f-tare", card);
+      tareInput.addEventListener("input", () => (tareInput.dataset.dirty = "1"));
+      const setTare = async () => {
+        const v = num(tareInput.value);
+        if (v == null || v < 0) return toast("Enter the keg's tare in kg", true);
+        const btn = qs(".b-tare", card);
         btn.disabled = true;
         try {
-          await api("/api/kegs/" + encodeURIComponent(keg.id) + "/tare", "POST", {});
-          setTimeout(() => api("/api/kegs/" + encodeURIComponent(keg.id) + "/tare-release", "POST", {}).catch(() => {}), 600);
-          toast("Tared");
+          await api(path + "/empty-keg-weight", "POST", { value: v.toFixed(3) });
+          // Until the scale reports again: the same weight, less the new tare.
+          const k = kegs.get(id);
+          if (k) {
+            k.amount_left = (grossKg(k) - v).toFixed(3);
+            k.empty_keg_weight = v.toFixed(3);
+          }
+          delete tareInput.dataset.dirty;
+          tareInput.blur();
+          toast("Tare set to " + v.toFixed(2) + " kg");
         } catch (e) {
           toast(e.message, true);
-        } finally {
-          setTimeout(() => (btn.disabled = false), 1200);
         }
+        const k = kegs.get(id);
+        if (k) updateCard(card, k);
+      };
+      qs(".b-tare", card).addEventListener("click", setTare);
+      tareInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") setTare();
       });
 
       return card;
     }
 
+    /* Fill in a card from a record, leaving alone any field being edited. */
+    function updateCard(card, keg) {
+      const online = connected.has(keg.id);
+      const litres = litresLeft(keg);
+      const temp = num(keg.keg_temperature);
+      const lastPour = num(keg.last_pour) || 0;
+      const low = litres < LOW_LITRES;
+
+      card.classList.toggle("is-offline", !online);
+      qs(".tag-offline", card).hidden = online;
+      qs(".dot", card).className = "dot " + (!online ? "" : isPouring(keg) ? "pouring" : "online");
+      qs(".keg-temp", card).textContent = temp != null ? temp.toFixed(1) + "°C" : "--";
+
+      qs(".v-litres", card).textContent = litres.toFixed(1);
+      qs(".keg-litres", card).classList.toggle("low-text", low);
+      qs(".keg-low", card).hidden = !low;
+      qs(".v-pour", card).hidden = lastPour <= 0;
+      qs(".v-pour-ml", card).textContent = Math.round(lastPour * 1000) + " ml";
+
+      const nameInput = qs(".keg-name", card);
+      if (document.activeElement !== nameInput) nameInput.value = (keg.my_contents || "").trim();
+      qs(".keg-scale", card).textContent = scaleName(keg);
+
+      const tare = tareKg(keg);
+      qs(".v-tare", card).textContent = "in effect: " + tare.toFixed(2) + " kg";
+      const tareInput = qs(".f-tare", card);
+      if (document.activeElement !== tareInput && !tareInput.dataset.dirty) tareInput.value = tare.toFixed(2);
+      qs(".b-tare", card).disabled = !online;
+    }
+
+    /* Cards are rebuilt only when the set of scales shown changes, so a
+       reading that arrives does not wipe what is being typed. */
     function render() {
       const ids = visibleIds();
-      grid.className = "serving-grid count-" + ids.length;
-      grid.innerHTML = "";
-      ids.forEach((id) => grid.appendChild(kegCard(kegs.get(id))));
+      const key = ids.join("|");
+      if (key !== shown) {
+        shown = key;
+        grid.className = "serving-grid count-" + ids.length;
+        grid.innerHTML = "";
+        ids.forEach((id) => grid.appendChild(kegCard(id)));
+      }
+      [...grid.children].forEach((card) => {
+        const keg = kegs.get(card.dataset.kegId);
+        if (keg) updateCard(card, keg);
+      });
       emptyMsg.hidden = kegs.size > 0;
       renderPickBar();
     }
@@ -204,7 +251,7 @@
       try {
         const [list, conn] = await Promise.all([api("/api/kegs"), api("/api/kegs/connected")]);
         kegs = new Map((list || []).map((k) => [k.id, k]));
-        connected = conn || [];
+        connected = new Set(conn || []);
         render();
       } catch (e) {
         toast(e.message, true);
@@ -214,13 +261,14 @@
     connectWs((msg) => {
       if (msg.type === "keg_removed") {
         kegs.delete(msg.id);
+        connected.delete(msg.id);
         render();
         return;
       }
       if (msg.type) return;
       if (!msg.id) return;
       kegs.set(msg.id, msg);
-      if (connected.indexOf(msg.id) === -1) connected.push(msg.id);
+      trackConnected(connected, msg);
       render();
     });
 
