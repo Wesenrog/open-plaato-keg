@@ -266,6 +266,30 @@ defmodule OpenPlaatoKeg.KegListenerTest do
       assert KegCommander.connected_kegs() == [@keg]
     end
 
+    test "is stored with the time it was last heard from, which stays when it is gone" do
+      socket = connect(listen())
+      before = System.os_time(:second)
+      send_data(socket, login() <> pin(2, "51", "12.5"))
+      assert recv(socket) == ack(1)
+
+      eventually(fn -> is_integer(stored(:last_seen)) end)
+      assert stored(:last_seen) in before..(before + 5)
+
+      :gen_tcp.close(socket)
+      eventually(fn -> KegCommander.connected_kegs() == [] end)
+      assert stored(:last_seen) in before..(before + 5)
+    end
+
+    test "a connection that sends no keg data is not stored for having been seen" do
+      socket = connect(listen())
+      send_data(socket, login())
+      assert recv(socket) == ack(1)
+      send_data(socket, frame(:ping, 2, ""))
+      assert recv(socket) == ack(2)
+
+      assert :dets.info(:keg_data, :size) == 0
+    end
+
     test "is one keg whatever the case of the id it sends" do
       socket = connect(listen())
 

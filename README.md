@@ -199,7 +199,9 @@ Keg object fields include: `id`, `amount_left` (litres), `percent_of_beer_left`,
 `temperature_offset`, `temperature_correction`, `chip_temperature_string`, `sensitivity`,
 `wifi_signal_strength`, `firmware_version`, `leak_detection`, `min_temperature` /
 `max_temperature`, `beer_left_unit` (`"litre"` or `"kg"`, derived), `internal` (device
-metadata), and the locally stored fields `my_label` (the scale's name), `my_contents` and `my_sort_order`.
+metadata), and the locally stored fields `my_label` (the scale's name), `my_contents` and `my_sort_order`. `last_seen` is when the
+scale was last heard from, in Unix seconds: for a scale that is not connected, the time it has
+been offline since.
 
 ### Commands
 

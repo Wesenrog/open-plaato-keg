@@ -49,6 +49,7 @@
     }
     .keg-id { flex: 1; min-width: 0; }
     .keg-scale { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }
+    .keg .tag-offline { margin-top: 0.3rem; color: var(--warn); }
     .keg-name::placeholder { color: var(--text-muted); font-weight: 500; }
     .keg-status { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
     .keg-temp { font-size: 0.9rem; color: var(--text-muted); }
@@ -161,9 +162,9 @@
         '<button class="drag-handle" title="Drag to change the order">⋮⋮ drag to move</button>' +
         '<div class="keg-top">' +
           '<div class="keg-id"><input class="keg-name" maxlength="40" placeholder="What is in the keg?" />' +
-            '<div class="keg-scale"></div></div>' +
+            '<div class="keg-scale"></div>' +
+            '<div class="tag-offline" hidden>offline</div></div>' +
           '<span class="keg-status">' +
-            '<span class="tag-offline" hidden>offline</span>' +
             '<span class="dot"></span>' +
             '<span class="keg-temp"></span>' +
           '</span>' +
@@ -308,6 +309,7 @@
 
       card.classList.toggle("is-offline", !online);
       qs(".tag-offline", card).hidden = online;
+      qs(".tag-offline", card).textContent = offlineText(keg);
       qs(".dot", card).className = "dot " + (!online ? "" : isPouring(keg) ? "pouring" : "online");
       qs(".keg-temp", card).textContent = temp != null ? temp.toFixed(1) + "°C" : "--";
 

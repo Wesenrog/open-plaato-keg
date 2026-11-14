@@ -63,6 +63,8 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
   sixteen when any id may log in), counted in `KegPeerRegistry`: the scale, its earlier
   connection, and a couple of attempts that never logged in. An IPv6 /64 is one address. Further connections are closed
   unanswered, with at most one log line per ten seconds.
+  Every read from a stored scale sets its `last_seen` (Unix seconds): the pages show an
+  offline scale as "offline since" that time.
 - **KegDataProcessor** — Functions run inside the handler process (no process of its own):
   decodes a logged-in keg's frames, classifies the connection as a keg, and fans out to the
   `KegData` store and the `WebSocketHandler`.
