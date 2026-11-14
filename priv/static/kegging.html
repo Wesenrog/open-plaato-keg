@@ -16,6 +16,7 @@
     .step h3 { margin: 0; font-size: 1rem; }
     .step .row { display: flex; gap: 0.5rem; }
     .step .row input { flex: 1; }
+    .step .row .preset { flex: 1; }
     .fill-figure .big { font-size: 2rem; font-weight: 800; }
     .fill-figure .sub { color: var(--text-muted); font-size: 0.9rem; margin: 0.3rem 0 0.5rem; }
     .fill-figure.near-full .big { color: var(--good); }
@@ -53,6 +54,10 @@
           <div class="row">
             <input id="maxVol" type="number" min="1" step="0.1" inputmode="decimal" placeholder="e.g. 19" />
             <button id="saveMax" class="cmd">Save</button>
+          </div>
+          <div class="row">
+            <button class="cmd preset" data-litres="9.5">9.5 L</button>
+            <button class="cmd preset" data-litres="19">19 L</button>
           </div>
           <div class="disabled-note" id="maxVal"></div>
         </div>
@@ -212,16 +217,27 @@
       }
     });
 
-    qs("#saveMax").addEventListener("click", async () => {
+    async function saveMax() {
       const v = maxVol.value.trim();
       if (!v) return toast("Enter a volume", true);
       try {
         await post("/max-keg-volume", { value: v });
-        toast("Full volume saved");
+        latest.max_keg_volume = v;
+        applyData(latest);
+        toast("Full volume saved: " + v + " L");
       } catch (e) {
         toast(e.message, true);
       }
-    });
+    }
+    qs("#saveMax").addEventListener("click", saveMax);
+
+    // The usual keg sizes: one tap sets and saves.
+    panel.querySelectorAll("button.preset").forEach((b) =>
+      b.addEventListener("click", () => {
+        maxVol.value = b.dataset.litres;
+        saveMax();
+      })
+    );
 
     qs("#nextKeg").addEventListener("click", () => {
       toast("Ready for the next keg");
