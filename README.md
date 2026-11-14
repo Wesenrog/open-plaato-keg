@@ -199,7 +199,7 @@ Keg object fields include: `id`, `amount_left` (litres), `percent_of_beer_left`,
 `temperature_offset`, `temperature_correction`, `chip_temperature_string`, `sensitivity`,
 `wifi_signal_strength`, `firmware_version`, `leak_detection`, `min_temperature` /
 `max_temperature`, `beer_left_unit` (`"litre"` or `"kg"`, derived), `internal` (device
-metadata), and the locally stored fields `my_label` (the scale's name) and `my_contents`.
+metadata), and the locally stored fields `my_label` (the scale's name), `my_contents` and `my_sort_order`.
 
 ### Commands
 
@@ -216,6 +216,7 @@ Sent to a connected keg unless noted. `503` if the keg is not connected.
 | `POST /api/kegs/:id/sensitivity` | `{"value": "very_low"\|"low"\|"medium"\|"high"}` (or `1`–`4`) | Pour-detection sensitivity |
 | `POST /api/kegs/:id/label` | `{"value": "Left scale"}` | Name of the scale (local only) |
 | `POST /api/kegs/:id/contents` | `{"value": "Pale ale"}` | What is in the keg on the scale (local only) |
+| `POST /api/kegs/order` | `{"ordered_ids": ["id1","id2"]}` | Order of the scales on the Serving page (local only) |
 | `POST /api/kegs/:id/delete` | — | Disconnect and erase all stored data for a keg |
 
 ### WebSocket

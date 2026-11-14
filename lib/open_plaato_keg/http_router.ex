@@ -159,6 +159,30 @@ defmodule OpenPlaatoKeg.HttpRouter do
     json_response(conn, 200, %{status: "ok", command: "contents", value: value})
   end
 
+  # The order the scales are shown in on the Serving page. Ids that are not
+  # stored are skipped, so that a stale page cannot bring a removed scale back.
+  post "api/kegs/order" do
+    ordered_ids =
+      case (conn.body_params || %{})["ordered_ids"] do
+        ids when is_list(ids) -> Enum.map(ids, &Kernel.to_string/1)
+        _ -> []
+      end
+
+    if ordered_ids == [] do
+      json_response(conn, 400, %{error: "ordered_ids must be a non-empty array"})
+    else
+      ordered_ids
+      |> Enum.filter(&KegData.known?/1)
+      |> Enum.with_index()
+      |> Enum.each(fn {keg_id, index} ->
+        KegData.publish(keg_id, [{:my_sort_order, Integer.to_string(index)}])
+        WebSocketHandler.publish(keg_id, [])
+      end)
+
+      json_response(conn, 200, %{status: "ok", ordered_ids: ordered_ids})
+    end
+  end
+
   # Delete a keg and all its stored data from DETS (e.g. decommissioned or phantom kegs).
   post "api/kegs/:id/delete" do
     keg_id = conn.params["id"]
