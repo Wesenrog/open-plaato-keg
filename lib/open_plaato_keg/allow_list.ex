@@ -35,6 +35,34 @@ defmodule OpenPlaatoKeg.AllowList do
   end
 
   @doc """
+  How many scales the allow-list lets in, or `:any` when there is none. Two
+  ids with the same name in the file are one scale. A file that cannot be
+  read adds none.
+  """
+  def scales(config) do
+    ids = config[:allowed_ids] || []
+
+    case config[:allowed_ids_file] do
+      nil when ids == [] ->
+        :any
+
+      nil ->
+        ids |> Enum.uniq() |> length()
+
+      file ->
+        entries =
+          case read(file) do
+            {:ok, entries, _other} -> entries
+            {:error, _reason} -> []
+          end
+
+        listed = Enum.map(entries, &elem(&1, 0))
+
+        (Enum.map(entries, &elem(&1, 1)) ++ (ids -- listed)) |> Enum.uniq() |> length()
+    end
+  end
+
+  @doc """
   The file's `{id, keg}` entries, ids in canonical form, and the number of
   lines that are neither an entry, a comment nor blank.
   """

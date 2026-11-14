@@ -28,6 +28,10 @@ RUN apk add --no-cache ca-certificates libsasl libstdc++ lz4-libs zlib ncurses-l
 WORKDIR /app
 RUN chown nobody /app
 ENV MIX_ENV="prod"
+# No Erlang distribution: nothing connects to this node, and with it on, epmd
+# and a distribution port listen in the container behind a cookie that is in
+# this repository. `bin/open_plaato_keg remote` and `rpc` do not work without it.
+ENV RELEASE_DISTRIBUTION=none
 
 COPY --from=build --chown=nobody:root /app/_build/prod/rel/open_plaato_keg ./
 

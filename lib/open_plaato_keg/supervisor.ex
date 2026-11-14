@@ -13,6 +13,7 @@ defmodule OpenPlaatoKeg.Supervisor do
     children = [
       ws_registry_spec(),
       keg_socket_registry_spec(),
+      keg_peer_registry_spec(),
       tcp_listener_spec(),
       http_router_spec()
     ]
@@ -26,6 +27,11 @@ defmodule OpenPlaatoKeg.Supervisor do
 
   defp keg_socket_registry_spec do
     {Registry, keys: :unique, name: OpenPlaatoKeg.KegSocketRegistry}
+  end
+
+  # One entry per open connection on the keg port, under its address.
+  defp keg_peer_registry_spec do
+    {Registry, keys: :duplicate, name: OpenPlaatoKeg.KegPeerRegistry}
   end
 
   defp tcp_listener_spec do
