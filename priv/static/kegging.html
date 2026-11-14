@@ -9,10 +9,8 @@
     .kegging { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem; }
     .device-row { display: flex; gap: 0.75rem; align-items: center; }
     .device-row select { flex: 1; }
-    .weight-readout { text-align: center; padding: 1.5rem 0; }
-    .weight-readout .kg { font-size: 4rem; font-weight: 800; line-height: 1; }
-    .weight-readout .kg small { font-size: 1.4rem; color: var(--text-muted); margin-left: 0.4rem; }
-    .weight-readout .status { margin-top: 0.6rem; color: var(--text-muted); font-size: 0.9rem; }
+    .weight-readout { text-align: center; padding: 0.75rem 0; }
+    .weight-readout .status { color: var(--text-muted); font-size: 0.9rem; }
     .step { display: flex; flex-direction: column; gap: 0.6rem; }
     .step h3 { margin: 0; font-size: 1rem; }
     .step .row { display: flex; gap: 0.5rem; }
@@ -36,7 +34,6 @@
 
       <div id="panel" hidden>
         <div class="card weight-readout">
-          <div class="kg"><span id="weight">--</span><small>kg net</small></div>
           <div class="status" id="wstatus">waiting for data…</div>
         </div>
 
@@ -187,9 +184,6 @@
       if (!keg || keg.id !== currentId) return;
       latest = keg;
 
-      const raw = num(keg.weight_raw);
-      const litres = litresLeft(keg);
-      qs("#weight").textContent = raw != null ? raw.toFixed(2) : litres.toFixed(2);
       qs("#wstatus").textContent = !connectedSet.has(keg.id)
         ? "offline — showing last stored data; commands won't reach the scale"
         : keg.is_pouring && keg.is_pouring !== "0"
@@ -204,6 +198,7 @@
       if (cap != null && !qs("#maxVol").value) qs("#maxVol").value = cap;
 
       const pct = percentLeft(keg);
+      const litres = litresLeft(keg);
       qs("#fillPct").textContent = pct.toFixed(0);
       qs("#fillL").textContent = litres.toFixed(1);
       qs("#fillCap").textContent = cap != null ? cap.toFixed(1) : "–";

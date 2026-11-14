@@ -119,6 +119,15 @@ function litresLeft(keg) {
   return num(keg.amount_left) || 0;
 }
 
+/* Net weight in kg for display. weight_raw (pin 53) is the load cell's raw
+   count on an uncalibrated scale -- large and negative, e.g. -171038 -- and is
+   a weight only when it is plausible; otherwise use the keg's calibrated
+   amount_left. Same 0-200 kg rule as upstream's compute_get_keg_current_weight. */
+function netWeightKg(keg) {
+  const raw = num(keg.weight_raw);
+  return raw != null && raw >= 0 && raw <= 200 ? raw : litresLeft(keg);
+}
+
 function percentLeft(keg) {
   return Math.max(0, Math.min(100, num(keg.percent_of_beer_left) || 0));
 }

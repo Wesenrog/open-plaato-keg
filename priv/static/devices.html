@@ -69,9 +69,7 @@
       const card = ce("div", "card dev" + (openId === id ? " open" : ""));
       card.dataset.id = id;
 
-      const raw = num(rec.weight_raw);
-      const litres = litresLeft(rec);
-      const weightTxt = raw != null ? raw.toFixed(2) : litres.toFixed(2);
+      const weightTxt = netWeightKg(rec).toFixed(2);
 
       card.innerHTML =
         '<div class="dev-head">' +
@@ -165,8 +163,7 @@
       if (openId === msg.id) {
         const w = qs('.dev[data-id="' + CSS.escape(msg.id) + '"] .dev-weight');
         if (w) {
-          const raw = num(msg.weight_raw);
-          w.innerHTML = (raw != null ? raw.toFixed(2) : litresLeft(msg).toFixed(2)) + ' <small>kg</small>';
+          w.innerHTML = netWeightKg(msg).toFixed(2) + ' <small>kg</small>';
         }
       }
     });
