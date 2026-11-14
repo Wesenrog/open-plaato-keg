@@ -31,6 +31,8 @@
       padding: 0;
       width: 100%;
     }
+    .keg-id { flex: 1; min-width: 0; }
+    .keg-scale { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }
     .keg-name::placeholder { color: var(--text-muted); font-weight: 500; }
     .keg-status { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
     .keg-temp { font-size: 0.9rem; color: var(--text-muted); }
@@ -86,14 +88,7 @@
     }
 
     function sortedIds() {
-      return [...kegs.values()]
-        .sort((a, b) => {
-          const ao = a.my_sort_order == null || a.my_sort_order === "" ? 1e9 : parseInt(a.my_sort_order, 10);
-          const bo = b.my_sort_order == null || b.my_sort_order === "" ? 1e9 : parseInt(b.my_sort_order, 10);
-          if (ao !== bo) return ao - bo;
-          return String(a.id).localeCompare(String(b.id));
-        })
-        .map((k) => k.id);
+      return [...kegs.keys()].sort((a, b) => String(a).localeCompare(String(b)));
     }
 
     function visibleIds() {
@@ -114,7 +109,7 @@
       all.forEach((id) => {
         const k = kegs.get(id);
         const chip = ce("span", "chip" + (vis.indexOf(id) !== -1 ? " on" : ""));
-        chip.textContent = (k && k.my_label && k.my_label.trim()) || shortId(id);
+        chip.textContent = scaleName(k || { id });
         chip.onclick = () => toggleSelection(id);
         pickBar.appendChild(chip);
       });
@@ -130,10 +125,6 @@
       render();
     }
 
-    function shortId(id) {
-      return "Scale " + String(id).slice(0, 8);
-    }
-
     const LOW_LITRES = 2;
     let shown = "";           // ids of the cards in the grid, joined
 
@@ -142,7 +133,8 @@
       card.dataset.kegId = id;
       card.innerHTML =
         '<div class="keg-top">' +
-          '<input class="keg-name" maxlength="40" />' +
+          '<div class="keg-id"><input class="keg-name" maxlength="40" placeholder="What is in the keg?" />' +
+            '<div class="keg-scale"></div></div>' +
           '<span class="keg-status">' +
             '<span class="tag-offline" hidden>offline</span>' +
             '<span class="dot"></span>' +
@@ -165,11 +157,10 @@
       const path = "/api/kegs/" + encodeURIComponent(id);
 
       const nameInput = qs(".keg-name", card);
-      nameInput.placeholder = shortId(id);
       nameInput.addEventListener("change", async () => {
         try {
-          await api(path + "/label", "POST", { value: nameInput.value.trim() });
-          toast("Name saved");
+          await api(path + "/contents", "POST", { value: nameInput.value.trim() });
+          toast("Saved");
         } catch (e) {
           toast(e.message, true);
         }
@@ -227,7 +218,8 @@
       qs(".v-pour-ml", card).textContent = Math.round(lastPour * 1000) + " ml";
 
       const nameInput = qs(".keg-name", card);
-      if (document.activeElement !== nameInput) nameInput.value = (keg.my_label || "").trim();
+      if (document.activeElement !== nameInput) nameInput.value = (keg.my_contents || "").trim();
+      qs(".keg-scale", card).textContent = scaleName(keg);
 
       const tare = tareKg(keg);
       qs(".v-tare", card).textContent = "in effect: " + tare.toFixed(2) + " kg";

@@ -83,9 +83,8 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
 
 - **HttpRouter** (`http_router.ex`) — Plug/Bandit router serving:
   - Reads: `/api/kegs`, `/api/kegs/devices`, `/api/kegs/connected`, `/api/kegs/:id`, `/api/alive`.
-  - Commands `/api/kegs/:id/*`: `tare`, `tare-release`, `empty-keg`, `empty-keg-release`,
-    `empty-keg-weight`, `max-keg-volume`, `calibrate-known-weight`, `temperature-offset`,
-    `sensitivity`, `label`, `display-mode`, `reset-last-pour`, `delete`; plus `/api/kegs/order`.
+  - Commands `/api/kegs/:id/*`: `tare`, `tare-release`, `empty-keg-weight`, `max-keg-volume`,
+    `calibrate-known-weight`, `temperature-offset`, `sensitivity`, `label`, `contents`, `delete`.
   - `/ws` (WebSocket upgrade) and static files from `priv/static`.
 - **WebSocketHandler** — Broadcasts to browser clients via `WebSocketConnectionRegistry`. Keg
   updates send the keg JSON plus `connected` (false in the update published when a scale
@@ -130,8 +129,8 @@ cases. The `assert_value` library is available for snapshot-style assertions.
 ## Key Conventions
 
 - The empty-keg pin (62) takes a weight in kg, and the scale does not report it back: the
-  stored `empty_keg_weight` is what was last sent. Sending `1` then `0` (the `empty-keg` /
-  `empty-keg-release` routes) sets a tare of 1 kg and then 0 kg; it captures nothing. To zero
+  stored `empty_keg_weight` is what was last sent. It is not a button: sending `1` then `0`
+  sets a tare of 1 kg and then 0 kg and captures nothing (checked on a scale). To zero
   with what is on the platform, send `amount_left + empty_keg_weight` (the Kegging page does).
 
 - Keg IDs are 32-character hex strings (the Blynk auth token), lower-cased at login. The id is
@@ -139,6 +138,6 @@ cases. The `assert_value` library is available for snapshot-style assertions.
 - The key a keg has in the store, the registry and the API (`:id`) is its id, or its name
   from the allow-list file. Nothing may assume that key is 32 hex characters.
 - Keg properties flow as keyword lists through the decode pipeline.
-- Locally-stored, user-defined fields are prefixed with `my_` (`my_label`, `my_sort_order`,
-  `my_display_mode`) and never sent to hardware.
+- Locally-stored, user-defined fields are prefixed with `my_` and never sent to hardware:
+  `my_label` is the scale's name (Keg Devices), `my_contents` what is in the keg on it (Serving).
 - The app version is read from `.release/version` at compile time.

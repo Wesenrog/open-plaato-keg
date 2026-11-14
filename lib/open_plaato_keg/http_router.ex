@@ -64,14 +64,6 @@ defmodule OpenPlaatoKeg.HttpRouter do
     command(conn, &KegCommander.tare_release/1, "tare_release")
   end
 
-  post "api/kegs/:id/empty-keg" do
-    command(conn, &KegCommander.set_empty_keg/1, "empty_keg")
-  end
-
-  post "api/kegs/:id/empty-keg-release" do
-    command(conn, &KegCommander.set_empty_keg_release/1, "empty_keg_release")
-  end
-
   post "api/kegs/:id/empty-keg-weight" do
     keg_id = conn.params["id"]
     %{"value" => value} = conn.body_params
@@ -156,54 +148,15 @@ defmodule OpenPlaatoKeg.HttpRouter do
     json_response(conn, 200, %{status: "ok", command: "label", value: value})
   end
 
-  post "api/kegs/:id/display-mode" do
+  # What is in the keg on the scale now. The label is the scale's own name.
+  post "api/kegs/:id/contents" do
     keg_id = conn.params["id"]
+    value = (conn.body_params || %{})["value"] |> Kernel.to_string() |> String.trim()
 
-    value =
-      (conn.body_params || %{})["value"]
-      |> Kernel.to_string()
-      |> String.trim()
-
-    case value do
-      v when v in ["weight_primary", "percent_primary"] ->
-        KegData.publish(keg_id, [{:my_display_mode, v}])
-        WebSocketHandler.publish(keg_id, [])
-        json_response(conn, 200, %{status: "ok", command: "display_mode", value: v})
-
-      _ ->
-        json_response(conn, 400, %{error: "Invalid display mode"})
-    end
-  end
-
-  post "api/kegs/:id/reset-last-pour" do
-    keg_id = conn.params["id"]
-
-    KegData.publish(keg_id, [{:last_pour, "0"}])
+    KegData.publish(keg_id, [{:my_contents, value}])
     WebSocketHandler.publish(keg_id, [])
 
-    json_response(conn, 200, %{status: "ok", command: "reset_last_pour"})
-  end
-
-  post "api/kegs/order" do
-    ordered_ids =
-      case (conn.body_params || %{})["ordered_ids"] do
-        ids when is_list(ids) -> ids
-        _ -> []
-      end
-
-    if ordered_ids == [] do
-      json_response(conn, 400, %{error: "ordered_ids must be a non-empty array"})
-    else
-      ordered_ids
-      |> Enum.map(&Kernel.to_string/1)
-      |> Enum.with_index()
-      |> Enum.each(fn {keg_id, index} ->
-        KegData.publish(keg_id, [{:my_sort_order, Integer.to_string(index)}])
-        WebSocketHandler.publish(keg_id, [])
-      end)
-
-      json_response(conn, 200, %{status: "ok", ordered_ids: ordered_ids})
-    end
+    json_response(conn, 200, %{status: "ok", command: "contents", value: value})
   end
 
   # Delete a keg and all its stored data from DETS (e.g. decommissioned or phantom kegs).

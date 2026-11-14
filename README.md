@@ -199,7 +199,7 @@ Keg object fields include: `id`, `amount_left` (litres), `percent_of_beer_left`,
 `temperature_offset`, `temperature_correction`, `chip_temperature_string`, `sensitivity`,
 `wifi_signal_strength`, `firmware_version`, `leak_detection`, `min_temperature` /
 `max_temperature`, `beer_left_unit` (`"litre"` or `"kg"`, derived), `internal` (device
-metadata), and the locally stored fields `my_label`, `my_sort_order`, `my_display_mode`.
+metadata), and the locally stored fields `my_label` (the scale's name) and `my_contents`.
 
 ### Commands
 
@@ -209,17 +209,13 @@ Sent to a connected keg unless noted. `503` if the keg is not connected.
 |---|---|---|
 | `POST /api/kegs/:id/tare` | — | Tare (zero) the scale |
 | `POST /api/kegs/:id/tare-release` | — | Release the tare hold |
-| `POST /api/kegs/:id/empty-keg` | — | Capture the current reading as the empty-keg weight |
-| `POST /api/kegs/:id/empty-keg-release` | — | Release the empty-keg hold |
-| `POST /api/kegs/:id/empty-keg-weight` | `{"value": 4.0}` | Set the empty-keg weight directly (kg) |
+| `POST /api/kegs/:id/empty-keg-weight` | `{"value": 4.0}` | Set the keg tare (kg). The scale takes a weight here; it has no "capture" command |
 | `POST /api/kegs/:id/max-keg-volume` | `{"value": 19}` | Set the full keg volume (litres) |
 | `POST /api/kegs/:id/calibrate-known-weight` | `{"value": 5}` | Load-cell calibration against a known mass (kg) |
 | `POST /api/kegs/:id/temperature-offset` | `{"value": -1.5}` | Temperature calibration offset (°C) |
 | `POST /api/kegs/:id/sensitivity` | `{"value": "very_low"\|"low"\|"medium"\|"high"}` (or `1`–`4`) | Pour-detection sensitivity |
-| `POST /api/kegs/:id/label` | `{"value": "Left keg"}` | Friendly name (local only) |
-| `POST /api/kegs/:id/display-mode` | `{"value": "weight_primary"\|"percent_primary"}` | UI preference (local only) |
-| `POST /api/kegs/:id/reset-last-pour` | — | Zero the stored last-pour value |
-| `POST /api/kegs/order` | `{"ordered_ids": ["id1","id2"]}` | Persist keg sort order (local only) |
+| `POST /api/kegs/:id/label` | `{"value": "Left scale"}` | Name of the scale (local only) |
+| `POST /api/kegs/:id/contents` | `{"value": "Pale ale"}` | What is in the keg on the scale (local only) |
 | `POST /api/kegs/:id/delete` | — | Disconnect and erase all stored data for a keg |
 
 ### WebSocket
