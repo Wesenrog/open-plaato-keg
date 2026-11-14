@@ -59,9 +59,9 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
   After login: one ack per read, frames with a non-UTF-8 body are dropped, a login with
   another id closes the connection, and a new connection logging in with the same id takes
   over from the earlier one.
-  One address may hold twice as many connections as there are scales on the allow-list
-  (`AllowList.scales/1`; sixteen when any id may log in), counted in `KegPeerRegistry`: every
-  scale and a reconnect of each. An IPv6 /64 is one address. Further connections are closed
+  One address may hold four connections per scale on the allow-list (`AllowList.scales/1`;
+  sixteen when any id may log in), counted in `KegPeerRegistry`: the scale, its earlier
+  connection, and a couple of attempts that never logged in. An IPv6 /64 is one address. Further connections are closed
   unanswered, with at most one log line per ten seconds.
 - **KegDataProcessor** — Functions run inside the handler process (no process of its own):
   decodes a logged-in keg's frames, classifies the connection as a keg, and fans out to the

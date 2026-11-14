@@ -8,9 +8,10 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   login itself, within `:prelogin_bytes` and within `:prelogin_timeout` of the
   accept. Anything else closes the socket with one log line.
 
-  One address may hold twice as many connections as there are scales on the
-  allow-list: every scale, and a reconnect of each while its earlier
-  connection is still open. Without it one machine could hold every
+  One address may hold four connections per scale on the allow-list: the
+  scale, its earlier connection while the server has not seen that one die,
+  and a couple of attempts whose login never arrived (each is held until the
+  pre-login deadline). Without a limit one machine could hold every
   connection the listener has, for free, and keep the scales out.
   """
   use ThousandIsland.Handler
@@ -33,6 +34,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   # Connections per address when any id may log in: there is no number of
   # scales to go by.
   @any_id_per_address 16
+  @per_scale 4
   @over_limit_log_ms 10_000
 
   def handle_connection(socket, opts) do
@@ -123,13 +125,13 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
 
   # The registry holds one entry per open connection, under its address, and
   # drops it when the handler exits. The allow-list is read only for an
-  # address that already has more than the two connections one scale is good for.
+  # address that already has more connections than one scale is good for.
   defp over_address_limit(socket, state, opts) do
     address = peer_address(socket)
     {:ok, _} = Registry.register(OpenPlaatoKeg.KegPeerRegistry, address, nil)
     open = OpenPlaatoKeg.KegPeerRegistry |> Registry.lookup(address) |> length()
 
-    if open > 2 do
+    if open > @per_scale do
       limit = Keyword.get_lazy(opts, :max_per_address, fn -> per_address_limit(state) end)
 
       if open > limit, do: log_over_limit(socket, limit)
@@ -143,7 +145,7 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
   defp per_address_limit(state) do
     case AllowList.scales(allow_list(state)) do
       :any -> @any_id_per_address
-      scales -> max(2 * scales, 2)
+      scales -> max(@per_scale * scales, @per_scale)
     end
   end
 

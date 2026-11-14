@@ -201,9 +201,9 @@ defmodule OpenPlaatoKeg.KegListenerTest do
   end
 
   describe "connections from one address" do
-    test "are two per scale on the allow-list; the next one is closed unanswered" do
+    test "are four per scale on the allow-list; the next one is closed unanswered" do
       port = listen(allowed_ids: [@keg, @other], prelogin_timeout: 2_000)
-      held = for _ <- 1..4, do: connect(port)
+      held = for _ <- 1..8, do: connect(port)
 
       log =
         capture_log(fn ->
@@ -212,16 +212,16 @@ defmodule OpenPlaatoKeg.KegListenerTest do
           assert recv(extra) == {:error, :closed}
         end)
 
-      assert log =~ "has 4 connections open"
+      assert log =~ "has 8 connections open"
 
-      # The four are untouched: one of them logs in.
+      # The eight are untouched: one of them logs in.
       send_data(hd(held), login())
       assert recv(hd(held)) == ack(1)
     end
 
     test "are counted as they are now: a closed one makes room" do
-      port = listen(allowed_ids: [@keg])
-      [first, _second] = for _ <- 1..2, do: connect(port)
+      port = listen(allowed_ids: [@keg], prelogin_timeout: 2_000)
+      [first | _rest] = for _ <- 1..4, do: connect(port)
 
       refused = connect(port)
       assert recv(refused) == {:error, :closed}
