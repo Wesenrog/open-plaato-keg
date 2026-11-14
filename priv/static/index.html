@@ -49,7 +49,7 @@
     }
     .keg-id { flex: 1; min-width: 0; }
     .keg-scale { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }
-    .keg .tag-offline { margin-top: 0.3rem; color: var(--warn); }
+    .keg-offline { color: var(--warn); }
     .keg-name::placeholder { color: var(--text-muted); font-weight: 500; }
     .keg-status { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
     .keg-temp { font-size: 0.9rem; color: var(--text-muted); }
@@ -57,7 +57,8 @@
     .keg-litres small { font-size: 1rem; font-weight: 600; color: var(--text-muted); margin-left: 0.3rem; }
     .keg-sub { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 0; }
     .keg-low { font-size: 0.85rem; font-weight: 700; color: var(--warn); margin-top: 0.4rem; }
-    .keg-tare { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+    /* At the bottom of the card, whatever is shown above it. */
+    .keg-tare { margin-top: auto; border-top: 1px solid var(--border); padding-top: 0.75rem; }
     .keg-tare .lbl { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
     .keg-tare .row { display: flex; gap: 0.5rem; }
     .keg-tare input { flex: 1; min-width: 0; }
@@ -162,8 +163,8 @@
         '<button class="drag-handle" title="Drag to change the order">⋮⋮ drag to move</button>' +
         '<div class="keg-top">' +
           '<div class="keg-id"><input class="keg-name" maxlength="40" placeholder="What is in the keg?" />' +
-            '<div class="keg-scale"></div>' +
-            '<div class="tag-offline" hidden>offline</div></div>' +
+            '<div class="keg-scale"><span class="v-scale"></span>' +
+              '<span class="keg-offline" hidden> — <span class="v-offline"></span></span></div></div>' +
           '<span class="keg-status">' +
             '<span class="dot"></span>' +
             '<span class="keg-temp"></span>' +
@@ -308,8 +309,8 @@
       const low = litres < LOW_LITRES;
 
       card.classList.toggle("is-offline", !online);
-      qs(".tag-offline", card).hidden = online;
-      qs(".tag-offline", card).textContent = offlineText(keg);
+      qs(".keg-offline", card).hidden = online;
+      qs(".v-offline", card).textContent = offlineText(keg);
       qs(".dot", card).className = "dot " + (!online ? "" : isPouring(keg) ? "pouring" : "online");
       qs(".keg-temp", card).textContent = temp != null ? temp.toFixed(1) + "°C" : "--";
 
@@ -321,7 +322,7 @@
 
       const nameInput = qs(".keg-name", card);
       if (document.activeElement !== nameInput) nameInput.value = (keg.my_contents || "").trim();
-      qs(".keg-scale", card).textContent = scaleName(keg);
+      qs(".v-scale", card).textContent = scaleName(keg);
 
       const tare = tareKg(keg);
       qs(".v-tare", card).textContent = "in effect: " + tare.toFixed(2) + " kg";
