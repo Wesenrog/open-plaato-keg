@@ -104,7 +104,7 @@
     }
 
     function optionLabel(rec) {
-      return connectedSet.has(rec.id) ? scaleName(rec) : scaleName(rec) + " — offline";
+      return connectedSet.has(rec.id) ? scaleName(rec) : scaleName(rec) + " — " + offlineText(rec);
     }
 
     function renderList() {
@@ -172,7 +172,7 @@
       const online = connectedSet.has(rec.id);
 
       qs("#wstatus").textContent = !online
-        ? "offline — showing last stored data\ncommands won't reach the scale"
+        ? offlineText(rec) + " — showing last stored data\ncommands won't reach the scale"
         : isPouring(rec)
         ? "settling…"
         : "live";

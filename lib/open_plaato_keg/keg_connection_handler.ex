@@ -285,7 +285,18 @@ defmodule OpenPlaatoKeg.KegConnectionHandler do
         |> Enum.filter(&keg_data?/1)
         |> KegDataProcessor.process_frames(state.processor)
 
+      seen(state.keg_id)
+
       {:continue, %{state | processor: processor}}
+    end
+  end
+
+  # When the scale was last heard from, in Unix seconds: for a scale that is
+  # gone, the time it has been offline since. Only for a scale that is stored,
+  # so that a connection that never sends keg data leaves nothing behind.
+  defp seen(keg_id) do
+    if KegData.known?(keg_id) do
+      KegData.publish(keg_id, last_seen: System.os_time(:second))
     end
   end
 

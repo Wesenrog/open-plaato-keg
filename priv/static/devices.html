@@ -80,11 +80,12 @@
       qs(".nm", card).textContent = name || "Unnamed scale";
       qs(".badge", card).hidden = !(online && !name);
       qs(".tag-offline", card).hidden = online;
+      qs(".tag-offline", card).textContent = offlineText(rec);
 
       const hasReading = num(rec.amount_left) != null;
       qs(".v-gross", card).textContent = hasReading ? grossKg(rec).toFixed(2) : "–";
       qs(".dev-note", card).textContent =
-        (online ? "" : "Last stored reading. ") +
+        (online ? "" : "Last stored reading" + (lastSeenText(rec) ? ", last seen " + lastSeenText(rec) : "") + ". ") +
         "Everything on the platform; the keg tare in effect is " + tareKg(rec).toFixed(2) + " kg.";
       qs(".v-fw", card).textContent = rec.firmware_version ? "fw " + rec.firmware_version : "";
       card.querySelectorAll("button.cmd").forEach((b) => (b.disabled = !online));

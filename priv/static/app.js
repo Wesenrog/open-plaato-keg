@@ -148,6 +148,26 @@ function scaleName(rec) {
   return (rec && rec.my_label && rec.my_label.trim()) || "Scale " + String(rec.id).slice(0, 8);
 }
 
+/* A scale's last_seen (Unix seconds) as a local time: "14:32" for today,
+   "12 Nov 14:32" for another day; "" when the scale has none stored. */
+function lastSeenText(rec) {
+  const s = num(rec && rec.last_seen);
+  if (s == null || s <= 0) return "";
+  const d = new Date(s * 1000);
+  const two = (n) => String(n).padStart(2, "0");
+  const time = two(d.getHours()) + ":" + two(d.getMinutes());
+  if (d.toDateString() === new Date().toDateString()) return time;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const year = d.getFullYear() === new Date().getFullYear() ? "" : " " + d.getFullYear();
+  return d.getDate() + " " + months[d.getMonth()] + year + " " + time;
+}
+
+/* "offline since 14:32", or "offline" for a scale with no time stored. */
+function offlineText(rec) {
+  const seen = lastSeenText(rec);
+  return seen ? "offline since " + seen : "offline";
+}
+
 /* Keep a Set of connected scale ids current from a WebSocket record. The
    server marks each record with `connected`; the one it sends when a scale
    drops has it false. Without the mark (older server) a record counts as
