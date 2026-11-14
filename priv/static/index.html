@@ -242,34 +242,36 @@
       showLock();
     });
 
+    /* The drag is followed on the window, not on the handle: moving the card
+       in the grid releases the pointer from the handle, and a release that
+       the handle never saw left the card marked as being dragged. */
     function enableDrag(card) {
       const handle = qs(".drag-handle", card);
-      let dragging = false;
 
       handle.addEventListener("pointerdown", (ev) => {
-        if (orderLocked) return;
-        dragging = true;
+        if (orderLocked || card.classList.contains("dragging")) return;
         ev.preventDefault();
-        try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
         card.classList.add("dragging");
+
+        const move = (e) => {
+          const el = document.elementFromPoint(e.clientX, e.clientY);
+          const over = el && el.closest(".keg");
+          if (!over || over === card || over.parentNode !== grid) return;
+          const cards = [...grid.children];
+          if (cards.indexOf(card) < cards.indexOf(over)) over.after(card);
+          else over.before(card);
+        };
+        const drop = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", drop);
+          window.removeEventListener("pointercancel", drop);
+          card.classList.remove("dragging");
+          saveOrder();
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", drop);
+        window.addEventListener("pointercancel", drop);
       });
-      handle.addEventListener("pointermove", (ev) => {
-        if (!dragging) return;
-        const el = document.elementFromPoint(ev.clientX, ev.clientY);
-        const over = el && el.closest(".keg");
-        if (!over || over === card || over.parentNode !== grid) return;
-        const cards = [...grid.children];
-        if (cards.indexOf(card) < cards.indexOf(over)) over.after(card);
-        else over.before(card);
-      });
-      const drop = () => {
-        if (!dragging) return;
-        dragging = false;
-        card.classList.remove("dragging");
-        saveOrder();
-      };
-      handle.addEventListener("pointerup", drop);
-      handle.addEventListener("pointercancel", drop);
     }
 
     /* The cards shown take the places they had in the full list, in their
