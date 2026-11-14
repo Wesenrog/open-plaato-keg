@@ -84,7 +84,8 @@ Raw TCP bytes from Plaato Keg hardware go through a three-stage decoding pipelin
 - **HttpRouter** (`http_router.ex`) — Plug/Bandit router serving:
   - Reads: `/api/kegs`, `/api/kegs/devices`, `/api/kegs/connected`, `/api/kegs/:id`, `/api/alive`.
   - Commands `/api/kegs/:id/*`: `tare`, `tare-release`, `empty-keg-weight`, `max-keg-volume`,
-    `calibrate-known-weight`, `temperature-offset`, `sensitivity`, `label`, `contents`, `delete`.
+    `calibrate-known-weight`, `temperature-offset`, `sensitivity`, `label`, `contents`, `delete`;
+    plus `/api/kegs/order`.
   - `/ws` (WebSocket upgrade) and static files from `priv/static`.
 - **WebSocketHandler** — Broadcasts to browser clients via `WebSocketConnectionRegistry`. Keg
   updates send the keg JSON plus `connected` (false in the update published when a scale
@@ -139,5 +140,6 @@ cases. The `assert_value` library is available for snapshot-style assertions.
   from the allow-list file. Nothing may assume that key is 32 hex characters.
 - Keg properties flow as keyword lists through the decode pipeline.
 - Locally-stored, user-defined fields are prefixed with `my_` and never sent to hardware:
-  `my_label` is the scale's name (Keg Devices), `my_contents` what is in the keg on it (Serving).
+  `my_label` is the scale's name (Keg Devices), `my_contents` what is in the keg on it (Serving),
+  `my_sort_order` its place on the Serving page (set by dragging, behind a lock).
 - The app version is read from `.release/version` at compile time.
